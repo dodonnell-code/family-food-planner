@@ -34,6 +34,8 @@ export interface Household {
     autoLockMinutes: number;
     lastBackupAt?: ISODate;
     backupReminderDays: number;
+    /** Warn this many days before stock reaches its best-by date (default 30). */
+    expiryWarningDays?: number;
   };
 }
 
@@ -347,6 +349,26 @@ export interface PlanSnapshot {
   results: unknown; // PlanResult (engine) serialized
   warnings: string[];
   createdAt: ISODate;
+}
+
+// ---------- Inventory ----------
+/**
+ * Something the household has on hand. Several entries per food are normal (different
+ * purchases with different best-by dates); on-hand = sum of unexpired entries.
+ */
+export interface StockEntry {
+  id: ID;
+  kind: 'food' | 'water' | 'equipment';
+  /** For kind 'food'. */
+  foodId?: ID;
+  /** For kind 'equipment': the equipment name as the plan lists it. */
+  item?: string;
+  /** Packages (food), gallons (water) or count (equipment). */
+  quantity: number;
+  bestBy?: ISODate;
+  note?: string;
+  addedAt: ISODate;
+  updatedAt: ISODate;
 }
 
 // ---------- Change review ----------

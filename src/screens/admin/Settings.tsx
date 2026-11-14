@@ -21,7 +21,7 @@ type NumKey = { [K in keyof PlanningDefaults]-?: PlanningDefaults[K] extends num
 function PlanningForm({ hh }: { hh: Household }) {
   const [name, setName] = useState(hh.name);
   const [p, setP] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(hh.planningDefaults).map(([k, v]) => [k, v === undefined ? '' : String(v)])));
-  const [s, setS] = useState({ autoLockMinutes: String(hh.settings.autoLockMinutes), backupReminderDays: String(hh.settings.backupReminderDays) });
+  const [s, setS] = useState({ autoLockMinutes: String(hh.settings.autoLockMinutes), backupReminderDays: String(hh.settings.backupReminderDays), expiryWarningDays: String(hh.settings.expiryWarningDays ?? 30) });
   const [msg, setMsg] = useState<{ ok: boolean; text: string }>();
 
   const field = (k: NumKey, label: string, opts: { min?: number; max?: number; step?: number; help?: string; optional?: boolean } = {}) => (
@@ -44,7 +44,7 @@ function PlanningForm({ hh }: { hh: Household }) {
       await updateHousehold({
         name: name.trim() || hh.name,
         planningDefaults,
-        settings: { ...hh.settings, autoLockMinutes: Math.max(1, n(s.autoLockMinutes) ?? 5), backupReminderDays: Math.max(1, n(s.backupReminderDays) ?? 14) },
+        settings: { ...hh.settings, autoLockMinutes: Math.max(1, n(s.autoLockMinutes) ?? 5), backupReminderDays: Math.max(1, n(s.backupReminderDays) ?? 14), expiryWarningDays: Math.min(365, Math.max(1, n(s.expiryWarningDays) ?? 30)) },
       });
       setMsg({ ok: true, text: 'Settings saved. The change is listed in Review.' });
     } catch (err) {
@@ -97,6 +97,14 @@ function PlanningForm({ hh }: { hh: Household }) {
         <div className="grid">
           {field('storageSpaceLiters', 'Storage space available (liters)', { optional: true, help: 'Plans warn if they won’t fit' })}
           {field('budget', 'Budget', { optional: true, step: 0.01, help: 'Only used for foods where you’ve entered a price' })}
+        </div>
+      </section>
+
+      <section className="card stack">
+        <h2>Inventory</h2>
+        <div className="grid">
+          <label>Warn about food expiring within (days)<input type="number" min={1} max={365} value={s.expiryWarningDays} onChange={(e) => setS((x) => ({ ...x, expiryWarningDays: e.target.value }))} />
+            <span className="small muted" style={{ fontWeight: 400 }}>Shows on Home and Inventory so you can use it in everyday meals first.</span></label>
         </div>
       </section>
 

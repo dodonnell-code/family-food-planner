@@ -9,6 +9,7 @@ import { computePlan, defaultScenario, SCENARIO_LABEL, TIER_LABEL } from '../../
 import { loadPrivateProfiles } from '../../data/reportsRepo';
 import { BUCKET_LABEL, type Bucket, type PlanResult } from '../../domain/planner';
 import { planCsv, planJson, publicFlags, reservedLine, type PrivateProfile, type ReportMode } from '../../domain/reports';
+import { inventoryStatus, remainingPlan } from '../../domain/inventory';
 import type { Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -21,9 +22,16 @@ export default function Reports() {
   const tier = (TIERS.includes(params.get('tier') as Tier) ? params.get('tier') : 'short') as Tier;
   const scenario = (SCENARIOS.includes(params.get('scenario') as Scenario) ? params.get('scenario') : defaultScenario(tier)) as Scenario;
   const [mode, setMode] = useState<ReportMode>('family');
+  const [stillToBuy, setStillToBuy] = useState(params.get('stillToBuy') === '1');
 
   const hh = useLiveQuery(() => db.households.toCollection().first(), []);
-  const plan = useLiveQuery(() => computePlan(tier, scenario, dek), [tier, scenario, dek]);
+  const full = useLiveQuery(() => computePlan(tier, scenario, dek), [tier, scenario, dek]);
+  const stock = useLiveQuery(() => db.stock.toArray(), []);
+  const plan = useMemo(() => {
+    if (!full || !stillToBuy) return full;
+    if (!stock) return undefined;
+    return { ...full, result: remainingPlan(full.result, inventoryStatus(full.result, stock, full.input.foods, new Date().toISOString().slice(0, 10), hh?.settings.expiryWarningDays)) };
+  }, [full, stock, stillToBuy, hh]);
   const profiles = useLiveQuery(
     async () => (mode === 'detailed' && dek && plan ? loadPrivateProfiles(plan.input.members.map((m) => m.id), dek) : undefined),
     [mode, dek, plan],
@@ -31,7 +39,7 @@ export default function Reports() {
   const names = useMemo(() => new Map(plan?.input.members.map((m) => [m.id, m.name]) ?? []), [plan]);
   const generatedAt = useMemo(() => new Date().toISOString(), [plan, mode]);
 
-  const base = `${slug(hh?.name ?? 'household')}-${tier}-${scenario}-${generatedAt.slice(0, 10)}${mode === 'detailed' ? '-PRIVATE' : ''}`;
+  const base = `${slug(hh?.name ?? 'household')}-${tier}-${scenario}${stillToBuy ? '-to-buy' : ''}-${generatedAt.slice(0, 10)}${mode === 'detailed' ? '-PRIVATE' : ''}`;
   const csv = () => plan && downloadText(`${base}.csv`, planCsv(plan.result, mode, names), 'text/csv;charset=utf-8');
   const json = () => plan && downloadText(`${base}.json`, JSON.stringify(planJson(plan.result, mode, { household: hh?.name ?? '', generatedAt, names, profiles }), null, 2), 'application/json');
 
@@ -41,7 +49,7 @@ export default function Reports() {
         <h1 style={{ margin: 0 }}>Reports &amp; export</h1>
         <div className="row" role="tablist" aria-label="Planning horizon">
           {TIERS.map((t) => (
-            <button key={t} role="tab" aria-selected={tier === t} className={tier === t ? 'primary' : ''} onClick={() => setParams({ tier: t, scenario: defaultScenario(t) }, { replace: true })}>{TIER_LABEL[t]}</button>
+            <button key={t} role="tab" aria-selected={tier === t} className={tier === t ? 'primary' : ''} onClick={() => setParams({ tier: t, scenario: defaultScenario(t), ...(stillToBuy ? { stillToBuy: '1' } : {}) }, { replace: true })}>{TIER_LABEL[t]}</button>
           ))}
           <select aria-label="Scenario" value={scenario} onChange={(e) => setParams({ tier, scenario: e.target.value }, { replace: true })} style={{ maxWidth: 220 }}>
             {SCENARIOS.map((s) => <option key={s} value={s}>{SCENARIO_LABEL[s]}</option>)}
@@ -51,6 +59,7 @@ export default function Reports() {
           <legend className="small muted" style={{ padding: '0 6px' }}>Report type</legend>
           <label className="inline"><input type="radio" name="mode" checked={mode === 'family'} onChange={() => setMode('family')} /> <span><strong>Family summary</strong><br /><span className="small muted">Shopping list, water, fuel and equipment. No one’s restrictions, health needs or notes.</span></span></label>
           <label className="inline"><input type="radio" name="mode" checked={mode === 'detailed'} onChange={() => setMode('detailed')} /> <span><strong>Detailed private report</strong><br /><span className="small muted">Adds each person’s restrictions, needs, conditions and private notes. For Admin only.</span></span></label>
+          <label className="inline" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}><input type="checkbox" checked={stillToBuy} onChange={(e) => setStillToBuy(e.target.checked)} /> <span><strong>Only what we still need to buy</strong><br /><span className="small muted">Subtracts what’s in Inventory. Expired items count as needed.</span></span></label>
           {mode === 'detailed' && <div className="notice danger small">This report contains private health information in plain text. Don’t share it, and delete printed or saved copies you no longer need.</div>}
         </fieldset>
         <div className="row">
@@ -63,14 +72,14 @@ export default function Reports() {
 
       {!plan || !hh ? <p className="muted">Preparing…</p> : (
         <article className="report card">
-          <ReportBody r={plan.result} household={hh.name} generatedAt={generatedAt} mode={mode} names={names} profiles={profiles} />
+          <ReportBody stillToBuy={stillToBuy} r={plan.result} household={hh.name} generatedAt={generatedAt} mode={mode} names={names} profiles={profiles} />
         </article>
       )}
     </div>
   );
 }
 
-function ReportBody({ r, household, generatedAt, mode, names, profiles }: { r: PlanResult; household: string; generatedAt: string; mode: ReportMode; names: Map<string, string>; profiles?: PrivateProfile[] }) {
+function ReportBody({ r, household, generatedAt, mode, names, profiles, stillToBuy }: { stillToBuy: boolean; r: PlanResult; household: string; generatedAt: string; mode: ReportMode; names: Map<string, string>; profiles?: PrivateProfile[] }) {
   const buckets = (Object.keys(BUCKET_LABEL) as Bucket[]).filter((b) => r.items.some((i) => i.bucket === b));
   const detailed = mode === 'detailed';
   const warnings = detailed ? r.warnings : r.warnings.filter((w) => !w.includes('“avoid when possible”'));
@@ -78,19 +87,20 @@ function ReportBody({ r, household, generatedAt, mode, names, profiles }: { r: P
     <div className="stack">
       <header>
         {detailed && <p className="report-private">PRIVATE: contains health information</p>}
-        <h1 style={{ marginBottom: 4 }}>{household}: {TIER_LABEL[r.tier].toLowerCase()} food plan</h1>
+        <h1 style={{ marginBottom: 4 }}>{household}: {TIER_LABEL[r.tier].toLowerCase()} {stillToBuy ? 'shopping list (still to buy)' : 'food plan'}</h1>
         <p className="muted" style={{ margin: 0 }}>{r.days} days · {SCENARIO_LABEL[r.scenario].toLowerCase()} · {r.people} {r.people === 1 ? 'person' : 'people'} ({[...names.values()].join(', ')}) · made {fmtDate(generatedAt)}</p>
       </header>
 
       <div className="report-kpis">
         <div><strong>{Math.round((r.plannedCalories / Math.max(1, r.targetCalories)) * 100)}%</strong><span>of calories</span></div>
-        <div><strong>{num(r.water.totalGallons)} gal</strong><span>water to store</span></div>
+        <div><strong>{num(r.water.totalGallons)} gal</strong><span>{stillToBuy ? 'water still to store' : 'water to store'}</span></div>
         <div><strong>{r.fuel.burnerMinutes ? `${num(r.fuel.burnerMinutes / 60)} h` : 'None'}</strong><span>cooking fuel</span></div>
         <div><strong>{num(r.storage.knownLiters)} L</strong><span>storage space</span></div>
       </div>
 
       <section>
         <h2>Shopping list</h2>
+        {stillToBuy && r.items.length === 0 && <p>Everything in this plan is on hand.</p>}
         <table className="table">
           <thead><tr><th>Food</th><th>Buy</th><th>Servings</th><th>Keeps</th>{detailed && <th>Notes</th>}</tr></thead>
           {buckets.map((b) => (
@@ -128,17 +138,18 @@ function ReportBody({ r, household, generatedAt, mode, names, profiles }: { r: P
       <section className="report-cols">
         <div>
           <h2>Water</h2>
-          <ul>
+          {stillToBuy ? <p>{r.water.totalGallons > 0 ? <><strong>{num(r.water.totalGallons)} gal</strong> still to store</> : 'Enough water stored.'}</p> : <ul>
             <li>{num(r.water.drinkingGallons)} gal drinking water ({r.water.drinkingDays} days at your setting)</li>
             <li>{num(r.water.prepGallons)} gal for preparing food</li>
             <li><strong>{num(r.water.totalGallons)} gal total</strong></li>
             {r.days > r.water.drinkingDays && <li>All {r.days} days of drinking water: about {num(r.water.fullHorizonGallons)} gal</li>}
-          </ul>
+          </ul>}
           <h2>Cooking fuel</h2>
           {r.fuel.burnerMinutes === 0 ? <p>None needed.</p> : <ul>{r.fuel.items.map((f) => <li key={f.name}>{f.name}: {f.minutes} min</li>)}<li><strong>About {num(r.fuel.burnerMinutes / 60)} burner-hours</strong>, plus extra</li></ul>}
         </div>
         <div>
-          <h2>Equipment</h2>
+          <h2>{stillToBuy ? 'Equipment still needed' : 'Equipment'}</h2>
+          {stillToBuy && r.equipment.length === 0 && <p>All checked off in Inventory.</p>}
           <ul>{r.equipment.map((e) => <li key={e.item}><span className="report-box" aria-hidden /> {e.item}</li>)}</ul>
         </div>
       </section>

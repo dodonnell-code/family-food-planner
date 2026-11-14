@@ -14,6 +14,7 @@ import type {
   PlanningScenario,
   PlanSnapshot,
   Survey,
+  StockEntry,
   SurveyAnswer,
 } from '../domain/types';
 
@@ -34,6 +35,7 @@ export class PlannerDB extends Dexie {
   needs!: EntityTable<MemberNeed, 'id'>;
   conditions!: EntityTable<MemberCondition, 'id'>;
   changes!: EntityTable<ChangeRecord, 'id'>;
+  stock!: EntityTable<StockEntry, 'id'>;
 
   constructor(name = 'family-food-planner') {
     super(name);
@@ -83,6 +85,8 @@ export class PlannerDB extends Dexie {
       });
     // v3: reviewable change records (before/after, read/unread, approve/deny).
     this.version(3).stores({ changes: 'id, timestamp, status, memberId, entity, entityId' });
+    // v4: inventory (what's on hand).
+    this.version(4).stores({ stock: 'id, kind, foodId, bestBy' });
   }
 }
 

@@ -3,6 +3,7 @@
 // (respondent suggestions, plan impact) add checks here.
 import { db as defaultDb, type PlannerDB } from '../data/db';
 import { needKind } from './needs';
+import { EXPIRING_SOON_DAYS, stockStatus } from './inventory';
 import type { Member } from './types';
 
 export type AttentionSeverity = 'high' | 'medium' | 'low';
@@ -81,6 +82,15 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
       title: `${pending.length} change${pending.length === 1 ? '' : 's'} waiting for your review`,
       detail: unread ? `${unread} unread. Approve to keep, or deny to undo.` : 'Approve to keep, or deny to undo.' });
   }
+
+  // Inventory rotation: expired or soon-to-expire stock.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const stock = await database.stock.toArray();
+  const warnDays = household?.settings.expiryWarningDays ?? EXPIRING_SOON_DAYS;
+  const expired = stock.filter((e) => stockStatus(e, todayIso, warnDays) === 'expired').length;
+  const expiring = stock.filter((e) => stockStatus(e, todayIso, warnDays) === 'expiring').length;
+  if (expired) items.push({ id: 'stock-expired', severity: 'medium', link: '/admin/inventory', title: `${expired} inventory item${expired === 1 ? ' is' : 's are'} past best-by`, detail: 'Replace them; they no longer count as on hand.' });
+  if (expiring) items.push({ id: 'stock-expiring', severity: 'low', link: '/admin/inventory', title: `${expiring} inventory item${expiring === 1 ? '' : 's'} to use soon`, detail: `Best-by within ${warnDays} days. Use them in everyday meals and restock.` });
 
   const last = household?.settings.lastBackupAt;
   const days = household?.settings.backupReminderDays ?? 14;

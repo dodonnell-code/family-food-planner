@@ -6,6 +6,7 @@ import { loadMembersWithSurveys, surveyBadge } from './memberStatus';
 import { useStartSurvey } from './AdminLayout';
 import { AttentionList } from './Review';
 import { computeAttention } from '../../domain/attention';
+import { EXPIRING_SOON_DAYS, stockStatus } from '../../domain/inventory';
 
 export default function AdminHome() {
   const [params] = useSearchParams();
@@ -31,6 +32,8 @@ export default function AdminHome() {
           <AttentionList items={attention} limit={3} />
         </section>
       )}
+
+      <UseSoon />
 
       <section className="card stack" aria-labelledby="next-h" style={picking ? { outline: '3px solid var(--accent)' } : undefined}>
         <h2 id="next-h">{picking ? 'Who is taking the survey?' : 'Start the next survey'}</h2>
@@ -70,5 +73,32 @@ export default function AdminHome() {
         </div>
       </section>
     </div>
+  );
+}
+
+/** Food (and water) to use or replace soon. Always shown on Home when anything is due. */
+function UseSoon() {
+  const data = useLiveQuery(async () => {
+    const [stock, foods, hh] = await Promise.all([db.stock.toArray(), db.foods.toArray(), db.households.toCollection().first()]);
+    const warn = hh?.settings.expiryWarningDays ?? EXPIRING_SOON_DAYS;
+    const today = new Date().toISOString().slice(0, 10);
+    const due = stock
+      .map((e) => ({ e, s: stockStatus(e, today, warn), name: e.kind === 'water' ? 'Stored water' : foods.find((f) => f.id === e.foodId)?.name ?? 'Food' }))
+      .filter((x) => x.s !== 'ok')
+      .sort((a, b) => (a.e.bestBy ?? '').localeCompare(b.e.bestBy ?? ''));
+    return { due, warn };
+  }, []);
+  if (!data || data.due.length === 0) return null;
+  return (
+    <section className="card stack" style={{ borderLeft: '5px solid var(--warn)' }}>
+      <div className="spread"><h2 style={{ margin: 0 }}>Use soon</h2><Link to="/admin/inventory">Inventory</Link></div>
+      <p className="small muted" style={{ margin: 0 }}>Within {data.warn} days of best-by. Use these in everyday meals, then restock.</p>
+      <ul style={{ margin: 0, paddingLeft: 20 }}>
+        {data.due.slice(0, 6).map(({ e, s, name }) => (
+          <li key={e.id}>{name}: {e.quantity} {e.kind === 'water' ? 'gal' : 'pkg'}, best by {fmtDate(e.bestBy!)} {s === 'expired' && <span className="badge danger">expired</span>}</li>
+        ))}
+      </ul>
+      {data.due.length > 6 && <p className="small muted" style={{ margin: 0 }}>And {data.due.length - 6} more.</p>}
+    </section>
   );
 }
