@@ -20,11 +20,14 @@ import Backup from './screens/admin/Backup';
 import Inventory from './screens/admin/Inventory';
 import Restore from './screens/Restore';
 import Survey from './screens/survey/Survey';
+import UpdatePrompt from './app/UpdatePrompt';
 
 function Routed() {
   const { ready } = useSession();
   if (!ready) return null;
   return (
+    <>
+    <UpdatePrompt />
     <Routes>
       <Route path="/" element={<Handoff />} />
       <Route path="/setup" element={<Setup />} />
@@ -46,6 +49,7 @@ function Routed() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
 

@@ -27,3 +27,7 @@ dist-ssr
 *.ffpbackup
 *backup*.json
 backups/
+# ...or exported reports (CSV/JSON/PDF), which may contain names or private details
+*.csv
+*-PRIVATE*
+reports/
