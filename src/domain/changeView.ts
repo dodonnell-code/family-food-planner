@@ -17,13 +17,18 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
   const n = l.needs.get(c.entityId);
   const needLabel = needKind(n?.kind ?? (c.after?.kind as string) ?? '')?.label ?? 'need';
   const restr = subjectLabel(r?.subject ?? (c.after?.subject as string) ?? '');
+  const isDislike = (r?.type ?? c.after?.type) === 'dislike';
   switch (`${c.entity}.${c.op}`) {
     case 'member.create': return `${who} was added`;
     case 'member.update': return c.source === 'respondent' ? `${who} suggests a profile change` : `${who}'s profile changed`;
     case 'member.status': return `${who} was ${({ active: 'reactivated', inactive: 'marked inactive', archived: 'archived' } as Record<string, string>)[c.after?.status as string] ?? 'updated'}`;
     case 'member.merge': return `"${c.before?.displayName ?? 'A duplicate'}" was merged into ${who}`;
-    case 'restriction.create': return c.source === 'respondent' ? `${who} suggests a restriction: ${restr}` : `${who}: ${restr} restriction added`;
-    case 'restriction.deactivate': return c.source === 'respondent' ? `${who} asks to remove the ${restr} restriction` : `${who}: ${restr} restriction removed`;
+    case 'restriction.create':
+      if (isDislike) return c.source === 'respondent' ? `${who} says they don’t like ${restr}` : `${who}: doesn’t like ${restr}`;
+      return c.source === 'respondent' ? `${who} suggests a restriction: ${restr}` : `${who}: ${restr} restriction added`;
+    case 'restriction.deactivate':
+      if (isDislike) return c.source === 'respondent' ? `${who} asks to remove ${restr} from their dislikes` : `${who}: ${restr} removed from dislikes`;
+      return c.source === 'respondent' ? `${who} asks to remove the ${restr} restriction` : `${who}: ${restr} restriction removed`;
     case 'restriction.update': return `${who}: ${restr} restriction changed`;
     case 'need.create': return `${who}: "${needLabel}" added`;
     case 'need.update': return `${who}: "${needLabel}" changed`;

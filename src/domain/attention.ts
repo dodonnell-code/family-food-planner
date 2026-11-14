@@ -50,7 +50,7 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
   }
 
   for (const r of restrictions) {
-    if (!activeIds.has(r.memberId) || r.verifiedAt) continue;
+    if (!activeIds.has(r.memberId) || r.verifiedAt || r.type === 'dislike') continue;
     items.push({ id: `unverified:${r.id}`, severity: 'high', memberId: r.memberId, link: `/admin/members/${r.memberId}`,
       title: `Confirm a restriction for ${fname(byId.get(r.memberId))}`, detail: 'Unconfirmed restrictions are still enforced, but should be checked.' });
   }

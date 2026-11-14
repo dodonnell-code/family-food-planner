@@ -5,7 +5,7 @@ import { db, now } from '../../data/db';
 import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, updateMember } from '../../data/repo';
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
-import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
+import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, isPreferenceOnly, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
 import NeedsCard from './NeedsCard';
 import type { AgeBand, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
 import { useStartSurvey } from './AdminLayout';
@@ -129,6 +129,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   const [crossContact, setCrossContact] = useState(true);
   const [verified, setVerified] = useState(true);
   const [note, setNote] = useState('');
+  const catalogNames = useLiveQuery(async () => (await db.foods.filter((f) => f.active).toArray()).map((f) => f.name).sort(), []);
 
   useEffect(() => {
     if (!dek || !restrictions) return;
@@ -142,15 +143,17 @@ function RestrictionsCard({ member }: { member: Member }) {
     const foods = customFood.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).map((s) => `food:${s}`);
     const subjects = [...picked, ...foods];
     if (subjects.length === 0) return setResult('Choose at least one item or type a food.');
+    const pref = isPreferenceOnly(type);
     const { added, skipped } = await addRestrictions(member.id, subjects, {
       type,
-      severity: severity || undefined,
-      cautionCrossContact: crossContact,
-      verifiedAt: verified ? now() : undefined,
+      // Preferences carry no sensitivity: no severity, no cross-contact, nothing to confirm.
+      severity: pref ? undefined : severity || undefined,
+      cautionCrossContact: pref ? false : crossContact,
+      verifiedAt: pref || verified ? now() : undefined,
       adminNoteEnc: note.trim() ? await encryptString(dek, note.trim()) : undefined,
     });
     setResult(
-      `Added ${added.length} restriction${added.length === 1 ? '' : 's'}.` +
+      `Added ${added.length} ${pref ? 'disliked food' : 'restriction'}${added.length === 1 ? '' : 's'}.` +
         (skipped.length ? ` Already recorded: ${skipped.map(subjectLabel).join(', ')}.` : ''),
     );
     setPicked([]);
@@ -173,26 +176,45 @@ function RestrictionsCard({ member }: { member: Member }) {
     );
   };
 
-  const active = (restrictions ?? []).filter((r) => r.active);
+  const pref = isPreferenceOnly(type);
+  const active = (restrictions ?? []).filter((r) => r.active && !isPreferenceOnly(r.type));
+  const dislikes = (restrictions ?? []).filter((r) => r.active && isPreferenceOnly(r.type));
   const inactive = (restrictions ?? []).filter((r) => !r.active);
 
   return (
     <section className="card stack">
-      <h2>Allergies, restrictions &amp; safety needs</h2>
-      <p className="small muted">These are hard safety rules. No food matching an active restriction will ever be assigned to {member.preferredName || member.displayName}, no matter how much others like it.</p>
+      <h2>Allergies, restrictions &amp; dislikes</h2>
+      <p className="small muted">Allergies and restrictions are hard safety rules. No food matching an active restriction will ever be assigned to {member.preferredName || member.displayName}, no matter how much others like it.</p>
       {active.length === 0 && <p className="muted">None recorded.</p>}
       <div className="list">
         {active.map((r) => <RestrictionRow key={r.id} r={r} note={notes[r.id]} />)}
       </div>
 
+      <div className="stack" style={{ gap: 6, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+        <h3 style={{ margin: 0 }}>Foods {member.preferredName || member.displayName.split(' ')[0]} doesn’t like</h3>
+        <p className="small muted" style={{ margin: 0 }}>Not a safety issue. These are left out of {member.preferredName || member.displayName.split(' ')[0]}’s share but can still be stocked for others.</p>
+        {dislikes.length === 0 ? <p className="muted small" style={{ margin: 0 }}>None recorded.</p> : (
+          <div className="row" style={{ gap: 8 }}>
+            {dislikes.map((r) => (
+              <span key={r.id} className="badge" style={{ fontSize: '0.95rem', padding: '6px 6px 6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {subjectLabel(r.subject)}
+                <button type="button" className="ghost" aria-label={`Remove ${subjectLabel(r.subject)}`} style={{ minHeight: 32, padding: '0 8px' }}
+                  onClick={() => deactivateRestriction(r.id)}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       <form className="stack" onSubmit={add} style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-        <h3>Add restrictions</h3>
-        <p className="small muted" style={{ margin: 0 }}>Tap everything that applies. You can pick several at once, and add more later.</p>
+        <h3>Add restrictions or dislikes</h3>
+        <p className="small muted" style={{ margin: 0 }}>Choose a type, then tap or type everything that applies. You can add several at once.</p>
         <label style={{ maxWidth: 360 }}>Type
           <select value={type} onChange={(e) => { setType(e.target.value as RestrictionType); setPicked([]); }}>
             {RESTRICTION_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
           </select>
         </label>
+        {!pref && <>
         <div className="stack" style={{ gap: 6 }}>
           <span style={{ fontWeight: 600 }}>Allergens</span>
           <div className="row" style={{ gap: 8 }}>{ALLERGENS.map((a) => <Chip key={a.code} code={a.code} label={a.label} />)}</div>
@@ -201,9 +223,13 @@ function RestrictionsCard({ member }: { member: Member }) {
           <span style={{ fontWeight: 600 }}>Diets &amp; exclusions</span>
           <div className="row" style={{ gap: 8 }}>{DIET_TAGS.map((d) => <Chip key={d.code} code={d.code} label={d.label} />)}</div>
         </div>
-        <label>Specific foods (optional — separate with commas)
-          <input value={customFood} onChange={(e) => setCustomFood(e.target.value)} placeholder="e.g. mushrooms, olives, coconut" />
+        </>}
+        <label>{pref ? 'Foods they don’t like (separate with commas)' : 'Specific foods (optional, separate with commas)'}
+          <input value={customFood} onChange={(e) => setCustomFood(e.target.value)} placeholder={pref ? 'e.g. sardines, olives, split peas' : 'e.g. mushrooms, olives, coconut'} list="catalog-foods" />
+          <datalist id="catalog-foods">{(catalogNames ?? []).map((n) => <option key={n} value={n} />)}</datalist>
+          {pref && <span className="small muted" style={{ fontWeight: 400 }}>A short word like “tuna” matches every tuna item in the catalog.</span>}
         </label>
+        {!pref && <>
         <div className="grid">
           <label>Severity (optional, applies to all selected)
             <select value={severity} onChange={(e) => setSeverity(e.target.value as typeof severity)}>
@@ -213,10 +239,11 @@ function RestrictionsCard({ member }: { member: Member }) {
         </div>
         <label className="inline"><input type="checkbox" checked={crossContact} onChange={(e) => setCrossContact(e.target.checked)} /> Cross-contact is a concern (shared storage needs review)</label>
         <label className="inline"><input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} /> Admin-confirmed (respondent cannot remove it)</label>
-        <label>Private note (encrypted, optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Planning info only, e.g. 'carries epinephrine; avoid 'may contain' labels'. Not a medical history." /></label>
+        </>}
+{!pref &&         <label>Private note (encrypted, optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Planning info only, e.g. 'carries epinephrine; avoid 'may contain' labels'. Not a medical history." /></label>}
         {result && <div className="notice ok" role="status">{result}</div>}
         <div><button className="primary" disabled={!dek || pendingCount === 0}>
-          {pendingCount ? `Add ${pendingCount} restriction${pendingCount === 1 ? '' : 's'}` : 'Add restrictions'}
+          {pendingCount ? `Add ${pendingCount} ${pref ? 'disliked food' : 'restriction'}${pendingCount === 1 ? '' : 's'}` : pref ? 'Add disliked foods' : 'Add restrictions'}
         </button></div>
       </form>
 

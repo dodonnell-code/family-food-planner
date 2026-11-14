@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { db, uid } from '../../data/db';
 import { inProgressSurvey, saveAnswer, submitSurvey, updateSurveyProgress } from '../../data/repo';
-import { checkFood } from '../../domain/safety';
+import { checkFood, isExcluded } from '../../domain/safety';
 import { firstName, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
 import type { FoodCategory, FoodItem, Member, MemberRestriction, PrepTolerance, RatingCode, RestrictionType, Suggestion, Survey as SurveyT, SurveyAnswer } from '../../domain/types';
 import { useSession } from '../../app/session';
@@ -152,8 +152,9 @@ function CategoryStep({ cat, foods, restrictions, answers, surveyId }: {
   cat: (typeof CATEGORIES)[number]; foods: FoodItem[]; restrictions: MemberRestriction[]; answers: Map<string, SurveyAnswer>; surveyId: string;
 }) {
   const withSafety = foods.map((f) => ({ f, safety: checkFood(f, restrictions) }));
-  const shown = withSafety.filter((x) => x.safety.blocked.length === 0);
+  const shown = withSafety.filter((x) => x.safety.blocked.length === 0 && x.safety.disliked.length === 0);
   const hidden = withSafety.filter((x) => x.safety.blocked.length > 0);
+  const disliked = withSafety.filter((x) => x.safety.blocked.length === 0 && x.safety.disliked.length > 0);
   const rated = shown.filter((x) => answers.has(x.f.id)).length;
 
   return (
@@ -166,6 +167,12 @@ function CategoryStep({ cat, foods, restrictions, answers, surveyId }: {
         <span className="badge">{rated} of {shown.length} answered</span>
       </div>
       {shown.map(({ f }) => <FoodCard key={f.id} food={f} answer={answers.get(f.id)} surveyId={surveyId} />)}
+      {disliked.length > 0 && (
+        <details className="card">
+          <summary className="muted">{disliked.length} food{disliked.length === 1 ? '' : 's'} skipped because you don’t like {disliked.length === 1 ? 'it' : 'them'}</summary>
+          <ul className="small muted">{disliked.map(({ f }) => <li key={f.id}>{f.name}</li>)}</ul>
+        </details>
+      )}
       {hidden.length > 0 && (
         <details className="card">
           <summary className="muted">{hidden.length} food{hidden.length === 1 ? '' : 's'} skipped to keep you safe</summary>
@@ -290,7 +297,7 @@ function RestrictionsStep({ survey, member, restrictions }: { survey: SurveyT; m
       <section className="card stack">
         <h2>Allergies &amp; foods you can’t eat</h2>
         {restrictions.length === 0 && <p className="muted">Nothing on file.</p>}
-        {restrictions.map((r) => {
+        {[...restrictions].sort((a, b) => Number(a.type === 'dislike') - Number(b.type === 'dislike')).map((r) => {
           const flagged = removal(r.id);
           return (
             <div key={r.id} className="stack" style={{ gap: 8, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
@@ -320,6 +327,7 @@ function RestrictionsStep({ survey, member, restrictions }: { survey: SurveyT; m
               <option value="allergy">Allergy</option>
               <option value="intolerance">It makes me feel unwell</option>
               <option value="religious-ethical">I don’t eat it for religious or personal reasons</option>
+              <option value="dislike">I just don’t like it</option>
             </select>
           </label>
           <label>Which foods?
@@ -366,7 +374,7 @@ function ReviewStep({ survey, foods, restrictions, answers, onSubmit, onJump }: 
 }) {
   const [busy, setBusy] = useState(false);
   const rows = CATEGORIES.map((c, i) => {
-    const safe = foods.filter((f) => f.category === c.id && checkFood(f, restrictions).blocked.length === 0);
+    const safe = foods.filter((f) => f.category === c.id && !isExcluded(f, restrictions));
     return { c, step: i + 1, total: safe.length, done: safe.filter((f) => answers.has(f.id)).length };
   });
   const total = rows.reduce((a, r) => a + r.total, 0);

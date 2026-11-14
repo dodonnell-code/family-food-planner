@@ -113,7 +113,9 @@ export type RestrictionType =
   | 'religious-ethical'
   | 'cannot-eat'
   | 'texture'
-  | 'medical-feeding';
+  | 'medical-feeding'
+  /** A preference, not a safety rule: excluded from this person's share only; no severity or cross-contact. */
+  | 'dislike';
 
 export interface MemberRestriction {
   id: ID;

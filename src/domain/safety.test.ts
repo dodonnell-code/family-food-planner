@@ -30,3 +30,12 @@ describe('checkFood', () => {
     expect(checkFood(food('peanut-butter'), [r('peanut', { active: false })]).blocked).toEqual([]);
   });
 });
+
+describe('dislikes', () => {
+  it('exclude matching foods for the person without treating them as safety blocks', () => {
+    const res = checkFood(food('tuna-pouch'), [r('food:tuna', { type: 'dislike' })]);
+    expect(res.blocked).toEqual([]);
+    expect(res.disliked).toEqual(['Doesn’t like tuna']);
+    expect(checkFood(food('chicken-canned'), [r('food:tuna', { type: 'dislike' })]).disliked).toEqual([]);
+  });
+});

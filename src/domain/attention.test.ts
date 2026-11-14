@@ -35,3 +35,11 @@ describe('needs attention', () => {
     expect((await computeAttention(db)).filter((i) => i.memberId === c.id)).toEqual([]);
   });
 });
+
+describe('dislikes in attention', () => {
+  it('never asks to confirm a dislike', async () => {
+    const m = await addMember({ displayName: 'Sam' }, db);
+    await addRestrictions(m.id, ['food:olives'], { type: 'dislike' }, db); // no verifiedAt
+    expect((await computeAttention(db)).some((i) => i.id.startsWith('unverified'))).toBe(false);
+  });
+});

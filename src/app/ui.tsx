@@ -45,7 +45,11 @@ export const RESTRICTION_TYPES: { code: RestrictionType; label: string }[] = [
   { code: 'cannot-eat', label: 'Cannot eat (specific food)' },
   { code: 'texture', label: 'Texture / chewing / swallowing' },
   { code: 'medical-feeding', label: 'Medical feeding need' },
+  { code: 'dislike', label: 'Don’t like (not a safety issue)' },
 ];
+
+/** Preference-only restriction types: no severity, cross-contact or confirmation. */
+export const isPreferenceOnly = (t: RestrictionType) => t === 'dislike';
 
 export function subjectLabel(subject: string): string {
   return (

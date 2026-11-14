@@ -8,6 +8,8 @@ export interface SafetyResult {
   blocked: string[];
   /** Reasons the admin should double-check (e.g. "may contain" without a cross-contact concern). */
   warnings: string[];
+  /** Preference exclusions ("Don't like"): never assigned to this person, but not a safety issue. */
+  disliked: string[];
 }
 
 /** Allergen codes a restriction subject covers (gluten implies wheat-containing items). */
@@ -22,6 +24,7 @@ const norm = (s: string) => s.toLowerCase().trim();
 export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): SafetyResult {
   const blocked: string[] = [];
   const warnings: string[] = [];
+  const disliked: string[] = [];
   const contains = new Set<string>(food.allergens.contains);
   const mayContain = new Set<string>(food.allergens.mayContain ?? []);
   const tags = new Set(food.tags);
@@ -30,6 +33,12 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
     if (!r.active) continue;
     const s = r.subject;
     const label = subjectLabel(s);
+
+    if (r.type === 'dislike') {
+      const term = norm(s.replace(/^food:/, ''));
+      if (term && norm(`${food.name} ${food.examples ?? ''}`).includes(term)) disliked.push(`Doesn’t like ${label}`);
+      continue;
+    }
 
     if (s.startsWith('diet:')) {
       if (s === 'diet:vegan' && !tags.has('vegan')) blocked.push(`Not vegan`);
@@ -60,7 +69,13 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
       else warnings.push(`May contain ${label}`);
     }
   }
-  return { blocked, warnings };
+  return { blocked, warnings, disliked };
 }
 
 export const isBlocked = (food: FoodItem, restrictions: MemberRestriction[]) => checkFood(food, restrictions).blocked.length > 0;
+
+/** Excluded from this person's share for any reason (safety or preference). */
+export const isExcluded = (food: FoodItem, restrictions: MemberRestriction[]) => {
+  const r = checkFood(food, restrictions);
+  return r.blocked.length > 0 || r.disliked.length > 0;
+};
