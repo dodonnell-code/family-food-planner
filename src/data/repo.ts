@@ -1,5 +1,6 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import { buildSeedCatalog, CATALOG_VERSION } from './seedCatalog';
+import { pick, recordChange } from './changes';
 import type {
   Household,
   ID,
@@ -77,16 +78,21 @@ export async function addMember(
   if (!m.displayName) throw new Error('Display name is required');
   await database.members.add(m);
   await audit('member.add', { memberId: m.id }, undefined, database);
+  await recordChange(database, { entity: 'member', entityId: m.id, memberId: m.id, op: 'create',
+    after: pick(m, ['displayName', 'preferredName', 'status', 'planningProfile']) });
   return m;
 }
 
 export async function updateMember(id: ID, patch: Partial<Omit<Member, 'id' | 'householdId' | 'createdAt'>>, database: PlannerDB = defaultDb) {
+  const before = await database.members.get(id);
   await database.members.update(id, { ...patch, updatedAt: now() });
   await audit('member.update', { memberId: id }, Object.keys(patch).join(','), database);
+  const keys = Object.keys(patch);
+  await recordChange(database, { entity: 'member', entityId: id, memberId: id, op: 'update', before: pick(before, keys), after: pick(patch, keys) });
 }
 
 export async function setMemberStatus(id: ID, status: MemberStatus, database: PlannerDB = defaultDb) {
-  await database.transaction('rw', database.members, database.surveys, database.audit, async () => {
+  await database.transaction('rw', [database.members, database.surveys, database.audit, database.changes], async () => {
     const m = await database.members.get(id);
     if (!m) throw new Error('Member not found');
     const ts = now();
@@ -101,13 +107,17 @@ export async function setMemberStatus(id: ID, status: MemberStatus, database: Pl
     }
     await database.members.update(id, patch);
     await audit(`member.status.${status}`, { memberId: id }, undefined, database);
+    if (m.status !== status) {
+      await recordChange(database, { entity: 'member', entityId: id, memberId: id, op: 'status',
+        before: { status: m.status, leftAt: m.leftAt }, after: { status, leftAt: 'leftAt' in patch ? patch.leftAt : m.leftAt } });
+    }
   });
 }
 
 /** Admin-only merge: moves all records from `fromId` onto `intoId`, archives `fromId`. Never automatic. */
 export async function mergeMembers(intoId: ID, fromId: ID, database: PlannerDB = defaultDb) {
   if (intoId === fromId) throw new Error('Cannot merge a member into itself');
-  await database.transaction('rw', [database.members, database.surveys, database.restrictions, database.needs, database.conditions, database.customValues, database.audit], async () => {
+  await database.transaction('rw', [database.members, database.surveys, database.restrictions, database.needs, database.conditions, database.customValues, database.audit, database.changes], async () => {
     await database.surveys.where('memberId').equals(fromId).modify({ memberId: intoId });
     await database.restrictions.where('memberId').equals(fromId).modify({ memberId: intoId });
     await database.needs.where('memberId').equals(fromId).modify({ memberId: intoId });
@@ -115,6 +125,8 @@ export async function mergeMembers(intoId: ID, fromId: ID, database: PlannerDB =
     await database.customValues.where('memberId').equals(fromId).delete(); // keep target's values
     await database.members.update(fromId, { status: 'archived', updatedAt: now() });
     await audit('member.merge', { intoId, fromId }, undefined, database);
+    const from = await database.members.get(fromId);
+    await recordChange(database, { entity: 'member', entityId: fromId, memberId: intoId, op: 'merge', before: { displayName: from?.displayName }, after: { mergedInto: intoId } });
   });
 }
 
@@ -139,6 +151,8 @@ export async function addRestriction(
   const latest = await latestSubmittedSurvey(r.memberId, database);
   if (latest) await database.surveys.update(latest.id, { needsRefresh: true });
   await audit('restriction.add', { memberId: r.memberId, restrictionId: r.id }, r.subject, database);
+  await recordChange(database, { entity: 'restriction', entityId: r.id, memberId: r.memberId, op: 'create',
+    after: pick(r, ['type', 'subject', 'severity', 'cautionCrossContact', 'verifiedAt', 'adminNoteEnc', 'active']) });
   return r;
 }
 
@@ -166,34 +180,45 @@ export async function addNeed(input: Omit<MemberNeed, 'id' | 'createdAt' | 'upda
   const n: MemberNeed = { ...input, id: uid(), active: true, createdAt: ts, updatedAt: ts };
   await database.needs.add(n);
   await audit('need.add', { memberId: n.memberId, needId: n.id }, `${n.domain}:${n.kind}`, database);
+  await recordChange(database, { entity: 'need', entityId: n.id, memberId: n.memberId, op: 'create', after: pick(n, ['kind', 'params', 'confirmed', 'detailsEnc', 'active']) });
   return n;
 }
 
 export async function updateNeed(id: ID, patch: Partial<Pick<MemberNeed, 'params' | 'confirmed' | 'detailsEnc'>>, database: PlannerDB = defaultDb) {
+  const before = await database.needs.get(id);
   await database.needs.update(id, { ...patch, updatedAt: now() });
   await audit('need.update', { needId: id }, undefined, database);
+  const keys = Object.keys(patch);
+  await recordChange(database, { entity: 'need', entityId: id, memberId: before?.memberId, op: 'update', before: pick(before, keys), after: pick(patch, keys) });
 }
 
 export async function deactivateNeed(id: ID, database: PlannerDB = defaultDb) {
+  const n = await database.needs.get(id);
   await database.needs.update(id, { active: false, updatedAt: now() });
   await audit('need.deactivate', { needId: id }, undefined, database);
+  await recordChange(database, { entity: 'need', entityId: id, memberId: n?.memberId, op: 'deactivate', before: { active: true }, after: { active: false } });
 }
 
 export async function addCondition(memberId: ID, labelEnc: MemberCondition['labelEnc'], database: PlannerDB = defaultDb): Promise<MemberCondition> {
   const c: MemberCondition = { id: uid(), memberId, labelEnc, active: true, createdAt: now() };
   await database.conditions.add(c);
   await audit('condition.add', { memberId, conditionId: c.id }, undefined, database);
+  await recordChange(database, { entity: 'condition', entityId: c.id, memberId, op: 'create', after: { labelEnc: labelEnc, active: true } });
   return c;
 }
 
 export async function deactivateCondition(id: ID, database: PlannerDB = defaultDb) {
+  const c = await database.conditions.get(id);
   await database.conditions.update(id, { active: false });
   await audit('condition.deactivate', { conditionId: id }, undefined, database);
+  await recordChange(database, { entity: 'condition', entityId: id, memberId: c?.memberId, op: 'deactivate', before: { active: true }, after: { active: false } });
 }
 
 export async function deactivateRestriction(id: ID, database: PlannerDB = defaultDb) {
+  const r = await database.restrictions.get(id);
   await database.restrictions.update(id, { active: false });
   await audit('restriction.deactivate', { restrictionId: id }, undefined, database);
+  await recordChange(database, { entity: 'restriction', entityId: id, memberId: r?.memberId, op: 'deactivate', before: { active: true }, after: { active: false } });
 }
 
 // ---------------- Surveys ----------------
@@ -258,7 +283,7 @@ export async function updateSurveyProgress(surveyId: ID, patch: Partial<Pick<Sur
 }
 
 export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb) {
-  await database.transaction('rw', database.surveys, database.audit, async () => {
+  await database.transaction('rw', [database.surveys, database.audit, database.changes], async () => {
     const s = await database.surveys.get(surveyId);
     assertEditable(s);
     // Previous submitted version becomes 'superseded' but is never deleted.
@@ -266,6 +291,7 @@ export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb
     for (const o of others) if (o.status === 'submitted') await database.surveys.update(o.id, { status: 'superseded' });
     await database.surveys.update(surveyId, { status: 'submitted', completedAt: now(), updatedAt: now() });
     await audit('survey.submit', { memberId: s.memberId, surveyId }, undefined, database);
+    await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'submit', after: { version: s.version } });
   });
 }
 

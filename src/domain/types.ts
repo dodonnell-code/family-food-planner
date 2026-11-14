@@ -310,6 +310,33 @@ export interface PlanSnapshot {
   createdAt: ISODate;
 }
 
+// ---------- Change review ----------
+export type ChangeEntity = 'member' | 'restriction' | 'need' | 'condition' | 'survey';
+export type ChangeOp = 'create' | 'update' | 'deactivate' | 'reactivate' | 'status' | 'merge' | 'submit';
+export type ChangeStatus = 'pending' | 'approved' | 'denied' | 'acknowledged';
+
+/**
+ * A reviewable change with before/after values. Admin changes apply immediately and
+ * "deny" reverts them; respondent suggestions (Phase 3) apply only when approved.
+ */
+export interface ChangeRecord {
+  id: ID;
+  timestamp: ISODate;
+  entity: ChangeEntity;
+  entityId: ID;
+  memberId?: ID;
+  op: ChangeOp;
+  /** Only the fields this change touched. Encrypted fields stay encrypted. */
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  source: 'admin' | 'respondent';
+  status: ChangeStatus;
+  /** Can "deny" undo it? (Survey submissions and merges cannot.) */
+  reversible: boolean;
+  readAt?: ISODate;
+  decidedAt?: ISODate;
+}
+
 // ---------- Audit / meta ----------
 export interface AuditEvent {
   id: ID;

@@ -3,8 +3,7 @@
 // (respondent suggestions, plan impact) add checks here.
 import { db as defaultDb, type PlannerDB } from '../data/db';
 import { needKind } from './needs';
-import { subjectLabel } from '../app/ui';
-import type { AuditEvent, Member } from './types';
+import type { Member } from './types';
 
 export type AttentionSeverity = 'high' | 'medium' | 'low';
 
@@ -69,6 +68,14 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
       title: `${fname(m)}'s guest dates have ended`, detail: 'They are no longer counted for current dates. Mark inactive or update their dates.' });
   }
 
+  const pending = await database.changes.where('status').equals('pending').toArray();
+  if (pending.length > 0) {
+    const unread = pending.filter((c) => !c.readAt).length;
+    items.push({ id: 'changes', severity: 'medium', link: '/admin/review#changes',
+      title: `${pending.length} change${pending.length === 1 ? '' : 's'} waiting for your review`,
+      detail: unread ? `${unread} unread. Approve to keep, or deny to undo.` : 'Approve to keep, or deny to undo.' });
+  }
+
   const last = household?.settings.lastBackupAt;
   const days = household?.settings.backupReminderDays ?? 14;
   if (active.length > 0 && (!last || Date.now() - Date.parse(last) > days * 86_400_000)) {
@@ -78,54 +85,4 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
 
   const order: Record<AttentionSeverity, number> = { high: 0, medium: 1, low: 2 };
   return items.sort((a, b) => order[a.severity] - order[b.severity]);
-}
-
-// ---------- Changes since the last plan ----------
-export interface ChangeEntry {
-  id: string;
-  timestamp: string;
-  text: string;
-  memberId?: string;
-}
-
-/** Audit events that affect planning, rendered as plain sentences. Sensitive values (condition names, notes) are never shown. */
-export async function changesSinceLastPlan(database: PlannerDB = defaultDb): Promise<{ since?: string; changes: ChangeEntry[] }> {
-  const lastSnap = (await database.snapshots.orderBy('createdAt').last())?.createdAt;
-  const events = await database.audit.where('timestamp').above(lastSnap ?? '').toArray();
-  const [members, restrictions, needs] = await Promise.all([database.members.toArray(), database.restrictions.toArray(), database.needs.toArray()]);
-  const mById = new Map(members.map((m) => [m.id, m]));
-  const rById = new Map(restrictions.map((r) => [r.id, r]));
-  const nById = new Map(needs.map((n) => [n.id, n]));
-
-  const describe = (e: AuditEvent): { text: string; memberId?: string } | null => {
-    const memberId = (e.refs.memberId as string | undefined)
-      ?? rById.get(e.refs.restrictionId as string)?.memberId
-      ?? nById.get(e.refs.needId as string)?.memberId;
-    const who = fname(mById.get(memberId ?? ''));
-    switch (e.action) {
-      case 'member.add': return { text: `${who} was added`, memberId };
-      case 'member.status.active': return { text: `${who} was reactivated`, memberId };
-      case 'member.status.inactive': return { text: `${who} was marked inactive`, memberId };
-      case 'member.status.archived': return { text: `${who} was archived`, memberId };
-      case 'member.merge': return { text: `A duplicate profile was merged into ${fname(mById.get(e.refs.intoId as string))}`, memberId: e.refs.intoId as string };
-      case 'member.update': return /planningProfile/.test(e.detail ?? '') ? { text: `${who}'s planning details changed`, memberId } : null;
-      case 'restriction.add': return { text: `${who}: ${subjectLabel(e.detail ?? rById.get(e.refs.restrictionId as string)?.subject ?? '')} restriction added`, memberId };
-      case 'restriction.deactivate': return { text: `${who}: ${subjectLabel(rById.get(e.refs.restrictionId as string)?.subject ?? '')} restriction removed`, memberId };
-      case 'need.add': return { text: `${who}: "${needKind((e.detail ?? '').split(':')[1] ?? '')?.label ?? 'need'}" added`, memberId };
-      case 'need.update': return { text: `${who}: "${needKind(nById.get(e.refs.needId as string)?.kind ?? '')?.label ?? 'need'}" updated`, memberId };
-      case 'need.deactivate': return { text: `${who}: "${needKind(nById.get(e.refs.needId as string)?.kind ?? '')?.label ?? 'need'}" removed`, memberId };
-      case 'condition.add': return { text: `${who}: a health condition was added`, memberId };
-      case 'condition.deactivate': return { text: `${who}: a health condition was removed`, memberId };
-      case 'survey.submit': return { text: `${who} submitted a survey`, memberId };
-      default: return null;
-    }
-  };
-
-  const changes = events
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    .flatMap((e) => {
-      const d = describe(e);
-      return d ? [{ id: e.id, timestamp: e.timestamp, ...d }] : [];
-    });
-  return { since: lastSnap, changes };
 }

@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   AuditEvent,
+  ChangeRecord,
   CustomFieldDefinition,
   CustomFieldValue,
   FoodItem,
@@ -32,6 +33,7 @@ export class PlannerDB extends Dexie {
   meta!: EntityTable<MetaEntry, 'key'>;
   needs!: EntityTable<MemberNeed, 'id'>;
   conditions!: EntityTable<MemberCondition, 'id'>;
+  changes!: EntityTable<ChangeRecord, 'id'>;
 
   constructor(name = 'family-food-planner') {
     super(name);
@@ -79,6 +81,8 @@ export class PlannerDB extends Dexie {
           }
         }
       });
+    // v3: reviewable change records (before/after, read/unread, approve/deny).
+    this.version(3).stores({ changes: 'id, timestamp, status, memberId, entity, entityId' });
   }
 }
 
