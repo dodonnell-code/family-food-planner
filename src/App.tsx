@@ -31,13 +31,49 @@ function Routed() {
   );
 }
 
+function StartupProblem({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <main className="center-page">
+      <div className="card stack" style={{ maxWidth: 620 }} role="alert">
+        <h1>{title}</h1>
+        {children}
+      </div>
+    </main>
+  );
+}
+
 export default function App() {
   const [autoLock, setAutoLock] = useState<number>();
+  const [error, setError] = useState<string>();
+  const secure = window.isSecureContext && !!globalThis.crypto?.subtle;
+
   useEffect(() => {
-    ensureInitialized().then((hh) => setAutoLock(hh.settings.autoLockMinutes));
+    if (!secure) return;
+    ensureInitialized()
+      .then((hh) => setAutoLock(hh.settings.autoLockMinutes))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     requestPersistentStorage();
-  }, []);
-  if (autoLock === undefined) return null;
+  }, [secure]);
+
+  if (!secure) {
+    return (
+      <StartupProblem title="This address isn't secure">
+        <p>The planner encrypts private information, and browsers only allow that on secure (HTTPS) addresses or on <code>localhost</code>.</p>
+        <p>You opened <strong>{window.location.host}</strong>. If you are on the computer running the app, open{' '}
+          <a href={`http://localhost:${window.location.port}/`}>http://localhost:{window.location.port}</a> instead. On an iPad, use the installed HTTPS version.</p>
+      </StartupProblem>
+    );
+  }
+  if (error) {
+    return (
+      <StartupProblem title="The planner couldn't start">
+        <p>Your data has not been changed. Try reloading the page. If this keeps happening, note the message below.</p>
+        <pre className="small" style={{ whiteSpace: 'pre-wrap' }}>{error}</pre>
+        <button className="primary" onClick={() => location.reload()}>Reload</button>
+      </StartupProblem>
+    );
+  }
+  if (autoLock === undefined) return <main className="center-page"><p className="muted">Loading…</p></main>;
   // HashRouter: works on GitHub Pages and offline without server rewrites.
   return (
     <SessionProvider autoLockMinutes={autoLock}>
