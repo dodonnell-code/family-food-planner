@@ -54,17 +54,19 @@ export default function Review() {
 function ChangesInbox() {
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const data = useLiveQuery(async () => {
-    const [changes, members, restrictions, needs, lastSnap] = await Promise.all([
+    const [changes, members, restrictions, needs, lastSnap, foods] = await Promise.all([
       db.changes.orderBy('timestamp').reverse().toArray(),
       db.members.toArray(),
       db.restrictions.toArray(),
       db.needs.toArray(),
       db.snapshots.orderBy('createdAt').last(),
+      db.foods.toArray(),
     ]);
     const lookups: Lookups = {
       members: new Map(members.map((m) => [m.id, m])),
       restrictions: new Map(restrictions.map((r) => [r.id, r])),
       needs: new Map(needs.map((n) => [n.id, n])),
+      foods: new Map(foods.map((f) => [f.id, f])),
     };
     return { changes, lookups, lastPlan: lastSnap?.createdAt };
   }, []);

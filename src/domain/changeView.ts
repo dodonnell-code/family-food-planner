@@ -7,6 +7,7 @@ export interface Lookups {
   members: Map<string, Member>;
   restrictions: Map<string, MemberRestriction>;
   needs: Map<string, MemberNeed>;
+  foods?: Map<string, { name: string }>;
 }
 
 const fname = (m?: Pick<Member, 'displayName' | 'preferredName'>) => (m ? m.preferredName || m.displayName.split(/\s+/)[0] : 'Someone');
@@ -35,6 +36,16 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
     case 'need.deactivate': return `${who}: "${needLabel}" removed`;
     case 'condition.create': return `${who}: a health condition was added`;
     case 'condition.deactivate': return `${who}: a health condition was removed`;
+    case 'survey.update': {
+      const b = (c.before?.ignoredRefusals as string[] | undefined) ?? [];
+      const a = (c.after?.ignoredRefusals as string[] | undefined) ?? [];
+      const added = a.filter((x) => !b.includes(x));
+      const removed = b.filter((x) => !a.includes(x));
+      const nm = (id?: string) => l.foods?.get(id ?? '')?.name ?? 'a food';
+      if (added.length) return `${who}: stopped applying survey refusal of ${nm(added[0])}`;
+      if (removed.length) return `${who}: survey refusal of ${nm(removed[0])} applies again`;
+      return `${who}: survey settings changed`;
+    }
     case 'survey.submit': return `${who} submitted survey version ${c.after?.version ?? ''}`.trim();
     default: return `${who}: ${c.entity} ${c.op}`;
   }
@@ -56,7 +67,8 @@ const LABELS: Record<string, string> = {
   'planningProfile.portionFactor': 'Portion size', privateNotesEnc: 'Private notes',
   type: 'Type', subject: 'Applies to', severity: 'Severity', cautionCrossContact: 'Cross-contact concern', verifiedAt: 'Admin-confirmed',
   adminNoteEnc: 'Note', active: 'Active', kind: 'Need', confirmed: 'Amount confirmed', detailsEnc: 'Details', labelEnc: 'Condition',
-  version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given',
+  version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
+  ignoredRefusals: 'Survey refusals not applied',
 };
 
 const isBlob = (v: unknown): v is EncryptedBlob => !!v && typeof v === 'object' && 'iv' in (v as object) && 'ct' in (v as object);
@@ -69,6 +81,8 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   if (key === 'subject') return { kind: 'text', text: subjectLabel(String(v)) };
   if (key === 'type') return { kind: 'text', text: RESTRICTION_TYPES.find((t) => t.code === v)?.label ?? String(v) };
   if (key === 'kind') return { kind: 'text', text: needKind(String(v))?.label ?? String(v) };
+  if (key === 'ignoredRefusals' && Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((id) => l.foods?.get(String(id))?.name ?? String(id)).join(', ') : 'none' };
+  if (Array.isArray(v)) return { kind: 'text', text: v.length ? v.join(', ') : 'none' };
   if (key === 'mergedInto') return { kind: 'text', text: fname(l.members.get(String(v))) };
   if (key === 'leftAt' || key.endsWith('guestFrom') || key.endsWith('guestUntil')) return { kind: 'text', text: new Date(String(v)).toLocaleDateString() };
   if (key === 'planningProfile.presence') return { kind: 'text', text: String(v).replace(/-/g, ' ') };

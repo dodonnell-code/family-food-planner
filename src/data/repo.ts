@@ -292,7 +292,10 @@ export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb
     for (const o of others) if (o.status === 'submitted') await database.surveys.update(o.id, { status: 'superseded' });
     await database.surveys.update(surveyId, { status: 'submitted', completedAt: now(), updatedAt: now() });
     await audit('survey.submit', { memberId: s.memberId, surveyId }, undefined, database);
-    await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'submit', after: { version: s.version } });
+    const refusedIds = (await database.answers.where('surveyId').equals(surveyId).toArray()).filter((a) => a.rating === 1).map((a) => a.foodItemId);
+    const refused = (await database.foods.bulkGet(refusedIds)).flatMap((f) => (f ? [f.name] : []));
+    await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'submit',
+      after: { version: s.version, ...(refused.length ? { refuses: refused } : {}) } });
   });
 }
 
@@ -321,6 +324,14 @@ async function createSuggestionChanges(s: Survey, database: PlannerDB) {
       }
     }
   }
+  // "Foods you never want stocked for you" → dislike suggestions.
+  const never = s.openResponses?.neverStock ?? '';
+  for (const text of never.split(/[,;\n]/).map((t) => t.trim().replace(/\.$/, '')).filter(Boolean)) {
+    if (covered.has(`food:${text.toLowerCase()}`)) continue;
+    await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
+      after: { type: 'dislike', subject: `food:${text}`, reason: 'From “never stock for me” in survey' } });
+  }
+
   const blockedAnswers = (await database.answers.where('surveyId').equals(s.id).toArray()).filter((a) => a.rating === 'blocked');
   for (const a of blockedAnswers) {
     const food = await database.foods.get(a.foodItemId);
@@ -328,6 +339,18 @@ async function createSuggestionChanges(s: Survey, database: PlannerDB) {
     await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
       after: { type: 'cannot-eat', subject: `food:${food.name}`, reason: 'Marked "Can’t eat" in survey' } });
   }
+}
+
+/** Stop (or resume) applying one "Would refuse" answer until the person's next survey. */
+export async function setRefusalIgnored(surveyId: ID, foodItemId: ID, ignored: boolean, database: PlannerDB = defaultDb) {
+  const s = await database.surveys.get(surveyId);
+  if (!s) throw new Error('Survey not found');
+  const before = s.ignoredRefusals ?? [];
+  const after = ignored ? [...new Set([...before, foodItemId])] : before.filter((x) => x !== foodItemId);
+  await database.surveys.update(surveyId, { ignoredRefusals: after });
+  await audit('survey.refusal', { surveyId, memberId: s.memberId }, `${ignored ? 'ignore' : 'restore'}:${foodItemId}`, database);
+  await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'update',
+    before: { ignoredRefusals: before }, after: { ignoredRefusals: after } });
 }
 
 export async function answersFor(surveyId: ID, database: PlannerDB = defaultDb): Promise<SurveyAnswer[]> {

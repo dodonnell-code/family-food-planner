@@ -4,11 +4,11 @@ import type { FoodItem, MemberRestriction } from './types';
 import { subjectLabel } from '../app/ui';
 
 export interface SafetyResult {
-  /** Reasons this food must never be assigned to the person. */
+  /** Reasons this food must never be served to the person (so never in a group meal they eat). */
   blocked: string[];
   /** Reasons the admin should double-check (e.g. "may contain" without a cross-contact concern). */
   warnings: string[];
-  /** Preference exclusions ("Don't like"): never assigned to this person, but not a safety issue. */
+  /** Preferences ("Don't like"): count against the food when choosing group meals; not a safety issue. */
   disliked: string[];
 }
 
@@ -74,7 +74,7 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
 
 export const isBlocked = (food: FoodItem, restrictions: MemberRestriction[]) => checkFood(food, restrictions).blocked.length > 0;
 
-/** Excluded from this person's share for any reason (safety or preference). */
+/** Unsafe or disliked for this person (used e.g. to skip foods in their survey). */
 export const isExcluded = (food: FoodItem, restrictions: MemberRestriction[]) => {
   const r = checkFood(food, restrictions);
   return r.blocked.length > 0 || r.disliked.length > 0;

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db, now } from '../../data/db';
-import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, updateMember } from '../../data/repo';
+import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, setRefusalIgnored, updateMember } from '../../data/repo';
+import { surveyRefusals } from '../../domain/preferences';
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
 import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, isPreferenceOnly, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
@@ -129,6 +130,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   const [crossContact, setCrossContact] = useState(true);
   const [verified, setVerified] = useState(true);
   const [note, setNote] = useState('');
+  const refusals = useLiveQuery(() => surveyRefusals(member.id), [member.id]);
   const catalogNames = useLiveQuery(async () => (await db.foods.filter((f) => f.active).toArray()).map((f) => f.name).sort(), []);
 
   useEffect(() => {
@@ -184,7 +186,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   return (
     <section className="card stack">
       <h2>Allergies, restrictions &amp; dislikes</h2>
-      <p className="small muted">Allergies and restrictions are hard safety rules. No food matching an active restriction will ever be assigned to {member.preferredName || member.displayName}, no matter how much others like it.</p>
+      <p className="small muted">Allergies and restrictions are hard safety rules. Group meals will never include a food that conflicts with {member.preferredName || member.displayName}’s active allergies or restrictions, no matter how much others like it.</p>
       {active.length === 0 && <p className="muted">None recorded.</p>}
       <div className="list">
         {active.map((r) => <RestrictionRow key={r.id} r={r} note={notes[r.id]} />)}
@@ -192,8 +194,9 @@ function RestrictionsCard({ member }: { member: Member }) {
 
       <div className="stack" style={{ gap: 6, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
         <h3 style={{ margin: 0 }}>Foods {member.preferredName || member.displayName.split(' ')[0]} doesn’t like</h3>
-        <p className="small muted" style={{ margin: 0 }}>Not a safety issue. These are left out of {member.preferredName || member.displayName.split(' ')[0]}’s share but can still be stocked for others.</p>
-        {dislikes.length === 0 ? <p className="muted small" style={{ margin: 0 }}>None recorded.</p> : (
+        <p className="small muted" style={{ margin: 0 }}>Not a safety issue. These count against a food when choosing group meals, so foods the family dislikes are avoided where possible.</p>
+        {dislikes.length === 0 && !refusals?.active.length ? <p className="muted small" style={{ margin: 0 }}>None recorded.</p> : (
+          <>
           <div className="row" style={{ gap: 8 }}>
             {dislikes.map((r) => (
               <span key={r.id} className="badge" style={{ fontSize: '0.95rem', padding: '6px 6px 6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -202,7 +205,26 @@ function RestrictionsCard({ member }: { member: Member }) {
                   onClick={() => deactivateRestriction(r.id)}>✕</button>
               </span>
             ))}
+            {refusals?.active.map((f) => (
+              <span key={f.id} className="badge" title="From their survey: “Would refuse”" style={{ fontSize: '0.95rem', padding: '6px 6px 6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-soft)', color: 'var(--text)' }}>
+                <span className="small muted">survey:</span> {f.name}
+                <button type="button" className="ghost" aria-label={`Stop applying ${f.name} until next survey`} title="Stop applying until their next survey" style={{ minHeight: 32, padding: '0 8px' }}
+                  onClick={() => setRefusalIgnored(refusals.survey!.id, f.id, true)}>✕</button>
+              </span>
+            ))}
           </div>
+          {!!refusals?.active.length && <span className="small muted">Tags marked “survey” come from {member.preferredName || member.displayName.split(' ')[0]}’s answers (“Would refuse”). Removing one stops it counting until their next survey.</span>}
+          </>
+        )}
+        {!!refusals?.ignored.length && (
+          <details>
+            <summary className="small muted">Survey refusals not applied ({refusals.ignored.length})</summary>
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              {refusals.ignored.map((f) => (
+                <button key={f.id} type="button" style={{ minHeight: 40 }} onClick={() => setRefusalIgnored(refusals.survey!.id, f.id, false)}>↺ {f.name}</button>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 

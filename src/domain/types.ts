@@ -114,7 +114,7 @@ export type RestrictionType =
   | 'cannot-eat'
   | 'texture'
   | 'medical-feeding'
-  /** A preference, not a safety rule: excluded from this person's share only; no severity or cross-contact. */
+  /** A preference, not a safety rule: counts against the food for group meals; no severity or cross-contact. */
   | 'dislike';
 
 export interface MemberRestriction {
@@ -275,6 +275,8 @@ export interface Survey {
   /** Profile changes the respondent suggests; become pending review items on submit. */
   suggestions?: Suggestion[];
   needsRefresh?: boolean;
+  /** Admin override: "Would refuse" answers (food ids) to stop applying until the next survey. */
+  ignoredRefusals?: ID[];
   updatedAt: ISODate;
 }
 
