@@ -14,7 +14,8 @@ import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, Plannin
 
 export const ENGINE_VERSION = 'engine-3';
 export const NEEDS_COOKING = 'Needs heat or cooking';
-export const CANNED_SKIPPED = 'Canned (long-term plan uses freeze-dried and dry food instead)';
+/** Default cap on canned food in long-term plans with cooking (% of calories). */
+export const LONG_TERM_CANNED_MAX_PERCENT = 20;
 
 /** Starter weights from the scope (not scientifically validated). Sum = 100. */
 export const WEIGHTS = { acceptance: 40, nutrition: 20, prep: 15, storage: 10, cost: 10, convenience: 5 } as const;
@@ -277,10 +278,6 @@ export function buildPlan(input: PlanInput): PlanResult {
   const noSurvey = members.filter((m) => !m.surveyId);
   if (noSurvey.length) warnings.push(`No survey yet for ${noSurvey.map((m) => m.name).join(', ')}: their likes and dislikes aren’t reflected.`);
 
-  // Long-term plans with cooking use freeze-dried and dry staples instead of canned food
-  // (household setting). Without cooking there'd be too little left, so canned stays there.
-  const noCanned = tier === 'long' && scenario === 'limited-cook' && defaults.longTermNoCanned !== false;
-
   // ---- 1. Hard safeguards ----
   const excluded: ExcludedFood[] = [];
   const eligible: FoodItem[] = [];
@@ -295,7 +292,6 @@ export function buildPlan(input: PlanInput): PlanResult {
       .filter((x) => x.reasons.length);
     if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
     if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: NEEDS_COOKING }); continue; }
-    if (noCanned && f.form === 'canned') { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: CANNED_SKIPPED }); continue; }
     eligible.push(f);
   }
 
@@ -343,6 +339,11 @@ export function buildPlan(input: PlanInput): PlanResult {
   const targetCalories = dailyCaloriesTotal * days;
   const items: PlannedItem[] = [];
   const people = members.length;
+  // Long-term plans with cooking keep canned food to a small share of calories (household
+  // setting) so the bulk is freeze-dried and dry food. Without cooking, freeze-dried meals
+  // (which mostly need hot water) can't fill in, so canned isn't limited there.
+  const cannedPct = tier === 'long' && scenario === 'limited-cook' ? (defaults.longTermCannedMaxPercent ?? LONG_TERM_CANNED_MAX_PERCENT) : 100;
+  const cannedBudget = { left: cannedPct >= 100 ? Infinity : (targetCalories * cannedPct) / 100 };
   // Fill side groups first; whatever any group can't place goes to grains & staples (last).
   const ORDER: Bucket[] = ['produce', 'snacks', 'drinks', 'mains', 'starches'];
   let carry = 0;
@@ -359,6 +360,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       if ((forms.get(`${x.f.category}:${x.f.form}`) ?? 0) >= 2) return false;
       const k = proteinKind(x.f);
       if (k && kinds.has(k)) return false;
+      // Long-term canned cap: one canned food per group, and none once the budget is used up.
+      if (x.f.form === 'canned' && cannedBudget.left !== Infinity && (cannedBudget.left < 1 || chosen.some((c) => c.f.form === 'canned'))) return false;
       // Anything the group mostly doesn't want is only a last resort.
       return !(x.factors.acceptance < 0.3 && chosen.length > 0);
     };
@@ -386,8 +389,11 @@ export function buildPlan(input: PlanInput): PlanResult {
     const servingCap = (x: (typeof pool)[number]) => Math.max(1, people * days * SERVING_CAP[x.f.category]);
     const bucketServingsLeft = { n: Number.isFinite(BUCKET_SERVINGS[b]) ? Math.max(1, people * days * BUCKET_SERVINGS[b]) : Infinity };
     let relaxed = false;
-    const capFor = (x: (typeof pool)[number]) => (relaxed ? servingCap(x) : Math.min(servingCap(x), Math.max(1, (MAX_ITEM_SHARE[tier] * bucketCalories) / x.f.nutrition.caloriesPerServing)));
     const alloc = new Map<(typeof pool)[number], number>();
+    const capFor = (x: (typeof pool)[number]) => {
+      const cap = relaxed ? servingCap(x) : Math.min(servingCap(x), Math.max(1, (MAX_ITEM_SHARE[tier] * bucketCalories) / x.f.nutrition.caloriesPerServing));
+      return x.f.form === 'canned' ? Math.min(cap, (alloc.get(x) ?? 0) + cannedBudget.left / x.f.nutrition.caloriesPerServing) : cap;
+    };
     for (let guard = 0; guard < 80 && share > 1 && bucketServingsLeft.n > 0.01; guard++) {
       let open = chosen.filter((x) => (alloc.get(x) ?? 0) < capFor(x) - 1e-9);
       if (!open.length) {
@@ -401,6 +407,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         const have = alloc.get(x) ?? 0;
         const add = Math.max(0, Math.min(capFor(x) - have, bucketServingsLeft.n, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing));
         alloc.set(x, have + add);
+        if (x.f.form === 'canned') cannedBudget.left -= add * x.f.nutrition.caloriesPerServing;
         bucketServingsLeft.n -= add;
         placed += add * x.f.nutrition.caloriesPerServing;
       }

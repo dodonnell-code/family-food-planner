@@ -87,7 +87,7 @@ export async function updateHousehold(patch: Partial<Pick<Household, 'name' | 'p
   if (!hh) throw new Error('Household not initialized');
   const p = patch.planningDefaults;
   if (p) {
-    for (const [k, v] of Object.entries(p)) if (v !== undefined && typeof v !== 'boolean' && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) throw new Error(`Invalid value for ${k}`);
+    for (const [k, v] of Object.entries(p)) if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) throw new Error(`Invalid value for ${k}`);
     if (p.shortDays < 1 || p.mediumDays < 1 || p.longDays < 1) throw new Error('Each planning horizon must be at least 1 day');
     if (!(p.shortDays < p.mediumDays && p.mediumDays < p.longDays)) throw new Error('Horizons must increase: short < medium < long');
     if (p.mealsPerDay < 1 || p.mealsPerDay > 6) throw new Error('Meals per day must be between 1 and 6');
