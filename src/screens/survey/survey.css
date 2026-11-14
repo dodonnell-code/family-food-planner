@@ -8,8 +8,6 @@
 .survey-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; width: 100%; max-width: none; }
 .survey-body > .survey-content { max-width: 980px; margin: 0 auto; padding: 24px 20px 32px; }
 .survey-bottom { flex: none; background: var(--bg); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
-/* While typing, the on-screen keyboard covers the bottom; hide the bar so it can't float over the text. */
-.survey:has(.survey-body :is(textarea, input:not([type=checkbox]):not([type=radio])):focus) .survey-bottom { display: none; }
 
 .food-card h2 { font-size: 1.2rem; }
 .ratings { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
