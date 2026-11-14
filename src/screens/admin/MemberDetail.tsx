@@ -6,7 +6,8 @@ import { addRestriction, deactivateRestriction, mergeMembers, setMemberStatus, u
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
 import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
-import type { AgeBand, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
+import { RAPID_CARB_PLACEHOLDER_SERVINGS } from '../../domain/types';
+import type { AgeBand, HealthNeeds, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
 import { useStartSurvey } from './AdminLayout';
 
 const AGE_BANDS: { v: AgeBand; l: string }[] = [
@@ -42,6 +43,7 @@ function MemberEditor({ member }: { member: Member }) {
 
       <ProfileCard member={member} onSaved={() => flash('Profile saved')} />
       <RestrictionsCard member={member} />
+      <HealthNeedsCard member={member} onSaved={() => flash('Food-related health needs saved')} />
       <PrivateNotesCard member={member} onSaved={() => flash('Private note saved (encrypted)')} />
       <SurveyHistoryCard memberId={member.id} />
       <StatusCard member={member} onMerged={() => nav('/admin/members')} />
@@ -64,6 +66,7 @@ function ProfileCard({ member, onSaved }: { member: Member; onSaved: () => void 
     const { displayName, preferredName, color, ...profile } = f;
     const planningProfile: PlanningProfile = {
       ...profile,
+      healthNeeds: member.planningProfile.healthNeeds, // owned by HealthNeedsCard; keep latest saved value
       dailyCalorieGoal: profile.dailyCalorieGoal ? Number(profile.dailyCalorieGoal) : undefined,
     };
     await updateMember(member.id, { displayName: displayName.trim(), preferredName: preferredName.trim() || undefined, color, planningProfile });
@@ -216,6 +219,75 @@ function RestrictionRow({ r, note }: { r: MemberRestriction; note?: string }) {
         <button className="danger" onClick={() => confirm(`Remove the ${subjectLabel(r.subject)} restriction? It will be kept in history.`) && deactivateRestriction(r.id)}>Remove</button>
       )}
     </div>
+  );
+}
+
+function HealthNeedsCard({ member, onSaved }: { member: Member; onSaved: () => void }) {
+  const { dek } = useSession();
+  const name = member.preferredName || member.displayName.split(' ')[0];
+  const [n, setN] = useState<HealthNeeds>(member.planningProfile.healthNeeds ?? {});
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dek) return;
+    if (!member.conditionLabelEnc) setLabel('');
+    else decryptString(dek, member.conditionLabelEnc).then(setLabel, () => setLabel('[unreadable]'));
+  }, [dek, member.conditionLabelEnc]);
+
+  const rc = n.rapidCarbs ?? { enabled: false, servingsPerDay: RAPID_CARB_PLACEHOLDER_SERVINGS, confirmed: false };
+  const setRc = (patch: Partial<typeof rc>) => setN((x) => ({ ...x, rapidCarbs: { ...rc, ...patch } }));
+  const flag = (k: 'carbCounting' | 'infantFormula' | 'textureModified' | 'specialtyFormula', v: boolean) => setN((x) => ({ ...x, [k]: v }));
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dek || label === null) return;
+    await updateMember(member.id, {
+      planningProfile: { ...member.planningProfile, healthNeeds: n },
+      conditionLabelEnc: label.trim() ? await encryptString(dek, label.trim()) : undefined,
+    });
+    onSaved();
+  }
+
+  return (
+    <form className="card stack" onSubmit={save}>
+      <h2>Food-related health needs</h2>
+      <p className="small muted">Planning flags only. The app never suggests doses or treatment, and these details stay admin-only, excluded from the family summary unless you choose a detailed report.</p>
+
+      <label>Condition (optional, encrypted)
+        <input value={label ?? ''} disabled={label === null} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Type 1 diabetes" />
+      </label>
+
+      <div className="stack" style={{ gap: 8 }}>
+        <label className="inline"><input type="checkbox" checked={rc.enabled} onChange={(e) => setRc({ enabled: e.target.checked })} />
+          Needs fast-acting carbs on hand (low blood sugar)</label>
+        {rc.enabled && (
+          <div className="stack" style={{ marginLeft: 36, gap: 8 }}>
+            <label style={{ maxWidth: 360 }}>Fast-acting carb servings to reserve per day
+              <input type="number" inputMode="numeric" min={1} max={20} value={rc.servingsPerDay}
+                onChange={(e) => setRc({ servingsPerDay: Math.max(1, Number(e.target.value) || 1), confirmed: true })} />
+            </label>
+            {rc.confirmed ? (
+              <span className="badge ok" style={{ alignSelf: 'flex-start' }}>amount set by admin</span>
+            ) : (
+              <div className="notice small">
+                {RAPID_CARB_PLACEHOLDER_SERVINGS} per day is a <strong>placeholder</strong>, not a recommendation. Set the amount that matches {name}'s care plan.
+                <div style={{ marginTop: 8 }}><button type="button" onClick={() => setRc({ confirmed: true })}>Keep {rc.servingsPerDay} per day</button></div>
+              </div>
+            )}
+            <span className="small muted">These are reserved for {name} in every plan (glucose tablets, gel, juice boxes and similar) and listed separately from shared food.</span>
+          </div>
+        )}
+        <label className="inline"><input type="checkbox" checked={!!n.carbCounting} onChange={(e) => flag('carbCounting', e.target.checked)} />
+          Needs carb counts for meals (shows carbs per serving; favors consistently labeled foods)</label>
+        <label className="inline"><input type="checkbox" checked={!!n.infantFormula} onChange={(e) => flag('infantFormula', e.target.checked)} />
+          Uses infant formula</label>
+        <label className="inline"><input type="checkbox" checked={!!n.textureModified} onChange={(e) => flag('textureModified', e.target.checked)} />
+          Needs soft or texture-modified food</label>
+        <label className="inline"><input type="checkbox" checked={!!n.specialtyFormula} onChange={(e) => flag('specialtyFormula', e.target.checked)} />
+          Uses a specialty or medical formula / nutrition product</label>
+      </div>
+      <div><button className="primary" disabled={label === null}>Save health needs</button></div>
+    </form>
   );
 }
 

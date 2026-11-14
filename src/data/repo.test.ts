@@ -120,3 +120,21 @@ describe('survey versioning', () => {
     expect((await latestSubmittedSurvey(m.id, db))?.needsRefresh).toBe(true);
   });
 });
+
+describe('catalog upgrade', () => {
+  it('refreshes unedited seed entries with carbs but never overwrites admin edits', async () => {
+    // Simulate an older install: carbs missing, one entry edited by admin, catalog version 1.
+    await db.foods.update('white-rice', { nutrition: { servingDesc: '1/4 cup dry', caloriesPerServing: 160 } });
+    await db.foods.update('tuna-canned', { name: 'Our tuna', revision: 2, nutrition: { servingDesc: '2 oz', caloriesPerServing: 60 } });
+    await db.foods.delete('glucose-tabs');
+    await db.meta.put({ key: 'catalogVersion', value: 1 });
+
+    await ensureInitialized(db);
+    expect((await db.foods.get('white-rice'))?.nutrition.carbsG).toBe(36);
+    expect((await db.foods.get('tuna-canned'))?.name).toBe('Our tuna');
+    expect((await db.foods.get('glucose-tabs'))?.tags).toContain('rapid-carb');
+  });
+  it('every seed entry has a carb estimate', () => {
+    expect(buildSeedCatalog().filter((f) => f.nutrition.carbsG === undefined).map((f) => f.id)).toEqual([]);
+  });
+});

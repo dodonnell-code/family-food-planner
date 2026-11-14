@@ -32,7 +32,29 @@ export type MemberStatus = 'active' | 'inactive' | 'archived';
 export type AgeBand = 'infant' | 'toddler' | 'child' | 'teen' | 'adult' | 'older-adult';
 export type Presence = 'usually-present' | 'occasional-guest' | 'temporary-guest';
 
+/**
+ * Food-related health needs (scope §4 "Health/feeding"). Planning flags only — never
+ * treatment advice. Quantities are entered by the admin; unconfirmed values are placeholders.
+ */
+export interface HealthNeeds {
+  /** Low blood sugar: reserve fast-acting carbs for this person in every tier. */
+  rapidCarbs?: {
+    enabled: boolean;
+    servingsPerDay: number;
+    /** false = placeholder value the admin hasn't confirmed (e.g. with the care team). */
+    confirmed: boolean;
+  };
+  /** Show carbs per serving and prefer foods with consistent, labeled carbs. */
+  carbCounting?: boolean;
+  infantFormula?: boolean;
+  textureModified?: boolean;
+  specialtyFormula?: boolean;
+}
+
+export const RAPID_CARB_PLACEHOLDER_SERVINGS = 3;
+
 export interface PlanningProfile {
+  healthNeeds?: HealthNeeds;
   ageBand?: AgeBand;
   dailyCalorieGoal?: number; // admin-approved
   portionFactor?: number; // 1.0 = typical adult
@@ -59,6 +81,8 @@ export interface Member {
   planningProfile: PlanningProfile;
   /** Encrypted with the admin key (see crypto.ts). Never shown in non-detailed exports. */
   privateNotesEnc?: EncryptedBlob;
+  /** Optional condition label, e.g. "Type 1 diabetes". Encrypted; admin-only. */
+  conditionLabelEnc?: EncryptedBlob;
   updatedAt: ISODate;
 }
 
@@ -167,6 +191,8 @@ export interface FoodItem {
     servingDesc: string;
     caloriesPerServing: number;
     proteinG?: number;
+    /** Approximate total carbs per serving; generic estimate — verify the actual label. */
+    carbsG?: number;
   };
   package: {
     description: string;

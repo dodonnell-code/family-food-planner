@@ -37,9 +37,12 @@ export async function ensureInitialized(database: PlannerDB = defaultDb): Promis
     }
     const seeded = (await database.meta.get('catalogVersion'))?.value as number | undefined;
     if (!seeded || seeded < CATALOG_VERSION) {
-      // Only add entries that don't exist; never overwrite admin edits.
-      const existing = new Set(await database.foods.toCollection().primaryKeys());
-      await database.foods.bulkAdd(buildSeedCatalog().filter((f) => !existing.has(f.id)));
+      // Add new seed entries; refresh untouched seed entries (revision 1 = never edited by admin).
+      // Admin-edited entries are never overwritten.
+      const existing = new Map((await database.foods.toArray()).map((f) => [f.id, f]));
+      const seed = buildSeedCatalog();
+      await database.foods.bulkAdd(seed.filter((f) => !existing.has(f.id)));
+      await database.foods.bulkPut(seed.filter((f) => existing.get(f.id)?.revision === 1));
       await database.meta.put({ key: 'catalogVersion', value: CATALOG_VERSION });
     }
     return hh;
