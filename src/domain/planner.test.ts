@@ -143,6 +143,9 @@ describe('equipment', () => {
     const mill = plan.equipment.find((e) => e.item.startsWith('Grain mill'));
     expect(mill?.foods).toEqual(['Hard wheat berries (whole grain)']);
     expect(plan.equipment.some((e) => e.item.startsWith('Camp stove'))).toBe(true);
+    // Fuel: one 10-minute skillet batch per 4 servings of flatbread.
+    const wheat = plan.items.find((i) => i.foodId === 'wheat-berries')!;
+    expect(plan.fuel.items.find((x) => x.name === wheat.name)?.minutes).toBe(Math.ceil(wheat.servings / 4) * 10);
   });
 
   it('no-cook plans never need a stove, and pull-tab cans need no opener', () => {

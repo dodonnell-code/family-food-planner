@@ -268,7 +268,7 @@ function WaterFuel({ r }: { r: PlanResult }) {
           {r.fuel.burnerMinutes === 0 ? <div className="muted">None needed.</div> : (
             <>
               <div><strong>About {num(r.fuel.burnerMinutes / 60)} burner-hours</strong></div>
-              <div className="small muted">Assumes about 4 servings per pot. Check your stove’s fuel use per hour and add extra.</div>
+              <div className="small muted">Based on each food’s batch size and cook time (set in Catalog). Check your stove’s fuel use per hour and add extra.</div>
               <ul className="small" style={{ margin: 0, paddingLeft: 20 }}>{r.fuel.items.map((f) => <li key={f.name}>{f.name}: {f.minutes} min</li>)}</ul>
             </>
           )}

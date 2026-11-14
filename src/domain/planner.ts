@@ -166,6 +166,8 @@ const proteinKind = (f: FoodItem) => PROTEIN_KINDS.find((t) => f.tags.includes(t
 /** Rapid-carb treatments (glucose tabs/gel, candy) are reserved for medical needs, not meals. */
 export const isMedicalOnly = (f: FoodItem) => f.tags.includes('rapid-carb') && f.category === 'fat-snack';
 
+/** Servings cooked per batch; 4 when the food doesn't say. */
+export const batchSize = (f: FoodItem) => Math.max(1, f.prep.batchServings ?? 4);
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const fmtMonths = (m: number) => (m >= 24 ? `${round1(m / 12)} yr` : `${m} mo`);
 
@@ -438,8 +440,7 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   const fuelItems = items.filter((i) => i.needsFuel).map((i) => {
     const f = foods.find((x) => x.id === i.foodId)!;
-    // Assumes cooking ~4 servings per pot; hot-water items share one boil per ~4 servings too.
-    const minutes = Math.ceil(i.servings / 4) * Math.max(5, f.prep.cookMinutes);
+    const minutes = Math.ceil(i.servings / batchSize(f)) * Math.max(5, f.prep.cookMinutes);
     return { name: i.name, minutes };
   });
   const burnerMinutes = fuelItems.reduce((s, x) => s + x.minutes, 0);

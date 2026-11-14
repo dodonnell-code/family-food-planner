@@ -217,7 +217,10 @@ export interface FoodItem {
   prep: {
     method: PrepMethod;
     edibleWithoutHeat: boolean;
+    /** Minutes of stove time per batch. */
     cookMinutes: number;
+    /** Servings cooked in one batch (default 4); used for the fuel estimate. */
+    batchServings?: number;
     waterCupsPerServing: number; // potable prep water
     needsFuel: boolean;
   };

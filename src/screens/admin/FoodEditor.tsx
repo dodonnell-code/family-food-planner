@@ -138,7 +138,8 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
               {METHODS.map((m) => <option key={m.v} value={m.v}>{m.l}</option>)}
             </select>
           </label>
-          {!noHeat && <label>Cook time (minutes)<input type="number" min={0} value={f.prep.cookMinutes} onChange={(e) => setIn('prep', { cookMinutes: num(e.target.value) ?? 0 })} /></label>}
+          {!noHeat && <label>Cook time per batch (minutes)<input type="number" min={0} value={f.prep.cookMinutes} onChange={(e) => setIn('prep', { cookMinutes: num(e.target.value) ?? 0 })} /></label>}
+          {!noHeat && <label>Servings per batch<input type="number" min={1} value={f.prep.batchServings ?? ''} placeholder="4" onChange={(e) => setIn('prep', { batchServings: num(e.target.value) })} /><span className="small muted" style={{ fontWeight: 400 }}>How many servings one pot or skillet session makes. Used for the fuel estimate.</span></label>}
           <label>Prep water per serving (cups)<input type="number" min={0} step={0.25} value={f.prep.waterCupsPerServing} onChange={(e) => setIn('prep', { waterCupsPerServing: num(e.target.value) ?? 0 })} /></label>
         </div>
         <span className={`badge ${noHeat ? 'ok' : 'warn'}`} style={{ alignSelf: 'flex-start' }}>{noHeat ? 'Counts for the no-cook (no power) plan' : 'Needs heat and fuel: limited-cooking plans only'}</span>

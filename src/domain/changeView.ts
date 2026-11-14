@@ -83,7 +83,7 @@ const LABELS: Record<string, string> = {
   name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
   rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', equipment: 'Equipment needed', mealRole: 'Meal role', needsReview: 'Needs review',
   'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',
-  'prep.method': 'Preparation', 'prep.cookMinutes': 'Cook time (min)', 'prep.waterCupsPerServing': 'Prep water (cups/serving)',
+  'prep.method': 'Preparation', 'prep.cookMinutes': 'Cook time per batch (min)', 'prep.batchServings': 'Servings per batch', 'prep.waterCupsPerServing': 'Prep water (cups/serving)',
   'prep.edibleWithoutHeat': 'Edible without heat', 'prep.needsFuel': 'Needs fuel',
   'shelfLife.unopenedMonthsMin': 'Shelf life from (months)', 'shelfLife.unopenedMonthsMax': 'Shelf life up to (months)', 'shelfLife.storage': 'Storage',
   'shelfLife.source': 'Shelf-life source', 'shelfLife.sourceDate': 'Source date', 'shelfLife.assumptions': 'Assumptions',
