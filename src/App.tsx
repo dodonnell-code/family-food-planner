@@ -11,7 +11,7 @@ import AdminHome from './screens/admin/AdminHome';
 import Members from './screens/admin/Members';
 import MemberDetail from './screens/admin/MemberDetail';
 import Review from './screens/admin/Review';
-import SurveyPlaceholder from './screens/SurveyPlaceholder';
+import Survey from './screens/survey/Survey';
 
 function Routed() {
   const { ready } = useSession();
@@ -21,7 +21,7 @@ function Routed() {
       <Route path="/" element={<Handoff />} />
       <Route path="/setup" element={<Setup />} />
       <Route path="/unlock" element={<Unlock />} />
-      <Route path="/survey/:memberId" element={<SurveyPlaceholder />} />
+      <Route path="/survey/:memberId" element={<Survey />} />
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<AdminHome />} />
         <Route path="members" element={<Members />} />

@@ -275,7 +275,7 @@ export async function saveAnswer(
   });
 }
 
-export async function updateSurveyProgress(surveyId: ID, patch: Partial<Pick<Survey, 'currentStep' | 'prepTolerance' | 'openResponses' | 'restrictionFlags'>>, database: PlannerDB = defaultDb) {
+export async function updateSurveyProgress(surveyId: ID, patch: Partial<Pick<Survey, 'currentStep' | 'prepTolerance' | 'openResponses' | 'suggestions'>>, database: PlannerDB = defaultDb) {
   await database.transaction('rw', database.surveys, async () => {
     assertEditable(await database.surveys.get(surveyId));
     await database.surveys.update(surveyId, { ...patch, updatedAt: now() });
@@ -283,9 +283,10 @@ export async function updateSurveyProgress(surveyId: ID, patch: Partial<Pick<Sur
 }
 
 export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb) {
-  await database.transaction('rw', [database.surveys, database.audit, database.changes], async () => {
+  await database.transaction('rw', [database.surveys, database.audit, database.changes, database.answers, database.foods, database.restrictions, database.members], async () => {
     const s = await database.surveys.get(surveyId);
     assertEditable(s);
+    await createSuggestionChanges(s, database);
     // Previous submitted version becomes 'superseded' but is never deleted.
     const others = await database.surveys.where('memberId').equals(s.memberId).toArray();
     for (const o of others) if (o.status === 'submitted') await database.surveys.update(o.id, { status: 'superseded' });
@@ -293,6 +294,40 @@ export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb
     await audit('survey.submit', { memberId: s.memberId, surveyId }, undefined, database);
     await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'submit', after: { version: s.version } });
   });
+}
+
+/**
+ * Turn the respondent's suggestions — plus any "Can't eat" ratings not already covered by a
+ * restriction — into pending review items. Nothing is applied until the admin approves.
+ */
+async function createSuggestionChanges(s: Survey, database: PlannerDB) {
+  const base = { memberId: s.memberId, source: 'respondent' as const, reversible: true };
+  const existing = await database.restrictions.where('memberId').equals(s.memberId).filter((r) => r.active).toArray();
+  const covered = new Set(existing.map((r) => r.subject.toLowerCase()));
+
+  for (const sg of s.suggestions ?? []) {
+    if (sg.kind === 'preferred-name' && sg.value.trim()) {
+      const m = await database.members.get(s.memberId);
+      await recordChange(database, { ...base, entity: 'member', entityId: s.memberId, op: 'update',
+        before: { preferredName: m?.preferredName }, after: { preferredName: sg.value.trim() } });
+    } else if (sg.kind === 'remove-restriction') {
+      await recordChange(database, { ...base, entity: 'restriction', entityId: sg.restrictionId, op: 'deactivate',
+        before: { active: true }, after: { active: false, reason: sg.reason || undefined } });
+    } else if (sg.kind === 'add-restriction' && sg.text.trim()) {
+      for (const text of sg.text.split(/[,;\n]/).map((t) => t.trim()).filter(Boolean)) {
+        if (covered.has(`food:${text.toLowerCase()}`)) continue;
+        await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
+          after: { type: sg.restrictionType, subject: `food:${text}` } });
+      }
+    }
+  }
+  const blockedAnswers = (await database.answers.where('surveyId').equals(s.id).toArray()).filter((a) => a.rating === 'blocked');
+  for (const a of blockedAnswers) {
+    const food = await database.foods.get(a.foodItemId);
+    if (!food || covered.has(`food:${food.name.toLowerCase()}`)) continue;
+    await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
+      after: { type: 'cannot-eat', subject: `food:${food.name}`, reason: 'Marked "Can’t eat" in survey' } });
+  }
 }
 
 export async function answersFor(surveyId: ID, database: PlannerDB = defaultDb): Promise<SurveyAnswer[]> {

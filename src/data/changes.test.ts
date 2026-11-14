@@ -122,3 +122,38 @@ describe('approve, acknowledge, read state', () => {
     expect(await pending()).toEqual([]);
   });
 });
+
+describe('respondent suggestions', () => {
+  async function submitWith(memberId: string, sugs: import('../domain/types').Suggestion[], blockedFood?: string) {
+    const s = await startOrResumeSurvey(memberId, db);
+    if (blockedFood) {
+      const { saveAnswer } = await import('./repo');
+      await saveAnswer(s.id, blockedFood, 'blocked', {}, db);
+    }
+    const { updateSurveyProgress } = await import('./repo');
+    await updateSurveyProgress(s.id, { suggestions: sugs }, db);
+    await submitSurvey(s.id, db);
+  }
+
+  it('do not take effect until approved', async () => {
+    const m = await addMember({ displayName: 'Sam' }, db);
+    const { added: [peanut] } = await addRestrictions(m.id, ['peanut'], { type: 'allergy', verifiedAt: new Date().toISOString() }, db);
+    await approveAll(db);
+    await submitWith(m.id, [
+      { id: 'a', kind: 'remove-restriction', restrictionId: peanut.id, reason: 'outgrew it' },
+      { id: 'b', kind: 'add-restriction', restrictionType: 'cannot-eat', text: 'mushrooms, olives' },
+      { id: 'c', kind: 'preferred-name', value: 'Z' },
+    ], 'tuna-canned');
+
+    const sugs = (await pending()).filter((c) => c.source === 'respondent');
+    expect(sugs).toHaveLength(5); // remove peanut, 2 foods, name, can't-eat tuna
+    expect((await db.restrictions.get(peanut.id))?.active).toBe(true);
+    expect((await db.members.get(m.id))?.preferredName).toBeUndefined();
+
+    for (const c of sugs) await decideChange(c.id, c.op === 'deactivate' ? 'deny' : 'approve', db);
+    expect((await db.restrictions.get(peanut.id))?.active).toBe(true); // declined
+    expect((await db.members.get(m.id))?.preferredName).toBe('Z');
+    const subjects = (await db.restrictions.where('memberId').equals(m.id).filter((r) => r.active).toArray()).map((r) => r.subject).sort();
+    expect(subjects).toEqual(['food:Canned tuna (pull-tab)', 'food:mushrooms', 'food:olives', 'peanut']);
+  });
+});

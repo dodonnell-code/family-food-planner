@@ -5,12 +5,12 @@ import { startOrResumeSurvey } from '../../data/repo';
 import { computeAttention } from '../../domain/attention';
 
 export function useStartSurvey() {
-  const { lock } = useSession();
   const nav = useNavigate();
   // Closes Admin mode before handing the iPad over (scope §3 step 2).
   return async (memberId: string) => {
     await startOrResumeSurvey(memberId);
-    lock();
+    // The survey screen locks Admin as soon as it mounts (locking here would make the
+    // admin area redirect to /unlock before the navigation lands).
     nav(`/survey/${memberId}`, { replace: true });
   };
 }

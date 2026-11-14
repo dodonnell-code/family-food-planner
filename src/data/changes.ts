@@ -2,7 +2,7 @@
 // Deny reverts the change — but only if nothing changed the same fields since,
 // otherwise it refuses rather than overwrite newer data.
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
-import type { ChangeEntity, ChangeOp, ChangeRecord, ID } from '../domain/types';
+import type { ChangeEntity, ChangeOp, ChangeRecord, ID, MemberRestriction } from '../domain/types';
 
 const IGNORED = new Set(['updatedAt', 'id', 'createdAt', 'memberId', 'householdId']);
 
@@ -76,7 +76,11 @@ export async function decideChange(id: ID, decision: 'approve' | 'deny' | 'ackno
     if (c.status !== 'pending') throw new Error('This change was already decided');
     const ts = now();
 
-    if (decision === 'deny') {
+    if (c.source === 'respondent') {
+      // Suggestions were never applied: approve applies them, deny simply declines.
+      if (decision === 'approve') await applySuggestion(c, database, ts);
+      await audit(`suggestion.${decision}`, { changeId: c.id, entityId: c.entityId }, `${c.entity}.${c.op}`, database);
+    } else if (decision === 'deny') {
       if (!c.reversible) throw new Error('This change cannot be undone');
       const table = database[TABLE[c.entity]] as unknown as import('dexie').Table<Record<string, unknown>, string>;
       const current = await table.get(c.entityId);
@@ -107,6 +111,26 @@ export async function decideChange(id: ID, decision: 'approve' | 'deny' | 'ackno
       readAt: c.readAt ?? ts,
     });
   });
+}
+
+async function applySuggestion(c: ChangeRecord, database: PlannerDB, ts: string) {
+  const a = c.after ?? {};
+  if (c.entity === 'member' && c.op === 'update') {
+    await database.members.update(c.entityId, { preferredName: a.preferredName as string, updatedAt: ts });
+  } else if (c.entity === 'restriction' && c.op === 'deactivate') {
+    const r = await database.restrictions.get(c.entityId);
+    if (r?.active) await database.restrictions.update(c.entityId, { active: false });
+  } else if (c.entity === 'restriction' && c.op === 'create') {
+    if (!(await database.restrictions.get(c.entityId))) {
+      await database.restrictions.add({
+        id: c.entityId, memberId: c.memberId!, type: a.type as MemberRestriction['type'], subject: a.subject as string,
+        // Approved by the admin, so it counts as confirmed.
+        verifiedAt: ts, cautionCrossContact: a.type === 'allergy', active: true, createdAt: ts,
+      });
+    }
+  } else {
+    throw new Error(`Unsupported suggestion: ${c.entity}.${c.op}`);
+  }
 }
 
 /** Approve every pending reversible change and acknowledge the rest. */

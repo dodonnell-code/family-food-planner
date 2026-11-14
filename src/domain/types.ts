@@ -268,11 +268,18 @@ export interface Survey {
     neverStock?: string;
     comfortMeals?: string;
   };
-  /** Respondent-flagged restriction concerns awaiting admin review. */
+  /** @deprecated replaced by suggestions */
   restrictionFlags?: { restrictionId?: ID; text: string }[];
+  /** Profile changes the respondent suggests; become pending review items on submit. */
+  suggestions?: Suggestion[];
   needsRefresh?: boolean;
   updatedAt: ISODate;
 }
+
+export type Suggestion =
+  | { id: ID; kind: 'remove-restriction'; restrictionId: ID; reason?: string }
+  | { id: ID; kind: 'add-restriction'; restrictionType: RestrictionType; text: string }
+  | { id: ID; kind: 'preferred-name'; value: string };
 
 export interface SurveyAnswer {
   id: ID; // `${surveyId}:${foodItemId}`

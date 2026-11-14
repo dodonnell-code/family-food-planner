@@ -107,7 +107,7 @@ function ChangesInbox() {
 const STATUS_BADGE: Record<ChangeRecord['status'], { text: string; tone: string }> = {
   pending: { text: 'waiting', tone: 'warn' },
   approved: { text: 'approved', tone: 'ok' },
-  denied: { text: 'denied, undone', tone: 'danger' },
+  denied: { text: 'denied', tone: 'danger' },
   acknowledged: { text: 'acknowledged', tone: 'ok' },
 };
 
@@ -172,7 +172,13 @@ function ChangeItem({ change: c, lookups }: { change: ChangeRecord; lookups: Loo
           {err && <div className="notice danger" role="alert">{err}</div>}
           {c.status === 'pending' && (
             <div className="row">
-              {c.reversible ? (
+              {c.source === 'respondent' ? (
+                <>
+                  <button className="primary" onClick={() => decide('approve')}>Approve &amp; apply</button>
+                  <button className="danger" onClick={() => decide('deny')}>Decline</button>
+                  <span className="small muted">Suggestions only take effect if you approve them.</span>
+                </>
+              ) : c.reversible ? (
                 <>
                   <button className="primary" onClick={() => decide('approve')}>Approve</button>
                   <button className="danger" onClick={() => confirm('Deny and undo this change? The earlier setting will be restored.') && decide('deny')}>Deny &amp; undo</button>
