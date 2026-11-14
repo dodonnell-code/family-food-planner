@@ -1,0 +1,521 @@
+// Planning engine — scope §7. Pure and deterministic: same inputs → same plan, so saved
+// snapshots can be reproduced and compared. Decision order:
+//   1. hard safeguards (allergies, diets, strict intolerances, "can't eat") keep a food out
+//      of the stockpile entirely — we plan shared group meals, so a food unsafe for anyone
+//      is not stocked at all;
+//   2. medical food needs are reserved per person, separate from group food;
+//   3. remaining foods are scored (acceptance, nutrition, prep, storage, cost, convenience)
+//      and a varied set is chosen to cover everyone's calories for the horizon.
+// Dislikes, "would refuse" answers and lenient intolerances count against a food; they never
+// make an unsafe food safe or vice versa.
+import { checkFood } from './safety';
+import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
+
+export const ENGINE_VERSION = 'engine-1';
+
+/** Starter weights from the scope (not scientifically validated). Sum = 100. */
+export const WEIGHTS = { acceptance: 40, nutrition: 20, prep: 15, storage: 10, cost: 10, convenience: 5 } as const;
+
+export interface PlanMember {
+  id: ID;
+  name: string;
+  dailyCalories?: number;
+  restrictions: MemberRestriction[];
+  /** Active needs; `details` are the decrypted free-text params (product names etc.). */
+  needs: (MemberNeed & { details?: Record<string, string> })[];
+  /** Latest submitted survey (undefined = no survey yet). */
+  surveyId?: ID;
+  surveyCompletedAt?: string;
+  ratings: Record<ID, RatingCode>;
+  /** "Would refuse" answers the admin chose to stop applying. */
+  ignoredRefusals: ID[];
+  prep?: PrepTolerance;
+}
+
+export interface PlanInput {
+  tier: Tier;
+  scenario: Scenario;
+  days: number;
+  defaults: PlanningDefaults;
+  members: PlanMember[];
+  foods: FoodItem[];
+}
+
+export interface MemberVerdict {
+  memberId: ID;
+  rating?: RatingCode;
+  /** 'ok' or the strongest thing counting against it for this person. */
+  status: 'ok' | 'dislike' | 'refuse' | 'avoid' | 'minor' | 'prep';
+  notes: string[];
+}
+
+export interface PlannedItem {
+  foodId: ID;
+  name: string;
+  category: FoodCategory;
+  bucket: Bucket;
+  score: number;
+  factors: Record<keyof typeof WEIGHTS, number>;
+  servings: number;
+  packages: number;
+  /** Servings left over after rounding up to whole packages. */
+  leftoverServings: number;
+  calories: number;
+  packageDesc: string;
+  servingsPerPackage: number;
+  prepWaterGallons: number;
+  needsFuel: boolean;
+  carbsG?: number;
+  why: string[];
+  flags: string[];
+  confidence: 'high' | 'medium' | 'low';
+  counts: { eligible: number; liked: number; neutral: number; disliked: number; unknown: number };
+  verdicts: MemberVerdict[];
+  volumeL?: number;
+  cost?: number;
+  shelfLife: string;
+}
+
+export interface ReservedItem {
+  memberId: ID;
+  needId: ID;
+  kind: string;
+  label: string;
+  foodId?: ID;
+  foodName?: string;
+  servings?: number;
+  packages?: number;
+  packageDesc?: string;
+  /** Things the admin must add by hand (formula, specialty products…). */
+  manual?: string;
+  warnings: string[];
+}
+
+export interface ExcludedFood {
+  foodId: ID;
+  name: string;
+  reasons: { memberId: ID; reasons: string[] }[];
+  /** True when excluded only because of the scenario (e.g. needs cooking), not a person. */
+  scenarioOnly?: string;
+}
+
+export interface MemberCoverage {
+  memberId: ID;
+  name: string;
+  dailyCalories: number;
+  mealOptions: number;
+  mealOptionNames: string[];
+  hasSurvey: boolean;
+  suggestion?: string;
+  notes: string[];
+}
+
+export interface PlanResult {
+  engineVersion: string;
+  tier: Tier;
+  scenario: Scenario;
+  days: number;
+  people: number;
+  dailyCaloriesTotal: number;
+  targetCalories: number;
+  plannedCalories: number;
+  items: PlannedItem[];
+  reserved: ReservedItem[];
+  excluded: ExcludedFood[];
+  coverage: MemberCoverage[];
+  water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number };
+  fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
+  equipment: string[];
+  storage: { knownLiters: number; unknownItems: number; limitLiters?: number };
+  cost: { total: number; pricedItems: number; unpricedItems: number; budget?: number };
+  warnings: string[];
+}
+
+// ---------------- Buckets (menu structure) ----------------
+export type Bucket = 'mains' | 'starches' | 'produce' | 'snacks' | 'drinks';
+const BUCKET_SHARE: Record<Bucket, number> = { mains: 0.42, starches: 0.25, produce: 0.13, snacks: 0.12, drinks: 0.08 };
+const BUCKET_OF: Record<FoodCategory, Bucket> = {
+  meal: 'mains', protein: 'mains', legume: 'mains',
+  grain: 'starches',
+  fruit: 'produce', vegetable: 'produce',
+  'fat-snack': 'snacks',
+  'dairy-alt': 'drinks', beverage: 'drinks',
+};
+export const BUCKET_LABEL: Record<Bucket, string> = {
+  mains: 'Main dishes & proteins', starches: 'Grains & starches', produce: 'Fruit & vegetables', snacks: 'Snacks & spreads', drinks: 'Drinks & milk',
+};
+/** How many different foods to choose per bucket, by tier (more variety for longer horizons). */
+const PICKS: Record<Tier, Record<Bucket, number>> = {
+  short: { mains: 3, starches: 2, produce: 2, snacks: 2, drinks: 1 },
+  medium: { mains: 5, starches: 3, produce: 4, snacks: 3, drinks: 2 },
+  long: { mains: 6, starches: 4, produce: 4, snacks: 3, drinks: 2 },
+};
+
+const PREP_EASE: Record<PrepMethod, number> = { 'ready-to-eat': 1, 'add-cold-water': 0.85, 'add-hot-water': 0.6, heat: 0.5, simmer: 0.4, boil: 0.3 };
+const ROLE_UTILITY: Record<FoodItem['mealRole'], number> = { main: 1, staple: 0.8, side: 0.6, snack: 0.5, drink: 0.35 };
+const NO_HEAT: PrepMethod[] = ['ready-to-eat', 'add-cold-water'];
+/** Most servings of any one food per person per day, so low-calorie foods don't balloon. */
+const SERVING_CAP: Record<Bucket, number> = { mains: 1.25, starches: 2, produce: 1.5, snacks: 1.5, drinks: 1.5 };
+const PROTEIN_KINDS = ['fish', 'beef', 'poultry', 'pork'];
+const proteinKind = (f: FoodItem) => PROTEIN_KINDS.find((t) => f.tags.includes(t));
+
+/** Rapid-carb treatments (glucose tabs/gel, candy) are reserved for medical needs, not meals. */
+export const isMedicalOnly = (f: FoodItem) => f.tags.includes('rapid-carb') && f.category === 'fat-snack';
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const fmtMonths = (m: number) => (m >= 24 ? `${round1(m / 12)} yr` : `${m} mo`);
+
+/** Does this person's survey say they won't do what the food's preparation needs? */
+function prepConflict(food: FoodItem, t?: PrepTolerance): string | undefined {
+  if (!t) return undefined;
+  const m = food.prep.method;
+  if (m === 'ready-to-eat' && !t.cold && food.category !== 'beverage' && food.category !== 'fat-snack') return 'Prefers not to eat food cold';
+  if (m === 'add-cold-water' && !t.addWater) return 'Prefers not to add water to food';
+  if (m === 'add-hot-water' && food.form === 'freeze-dried' && !t.rehydrate) return 'Prefers not to eat rehydrated food';
+  if ((m === 'simmer' || m === 'boil' || m === 'heat' || m === 'add-hot-water') && !t.boilSimmer && !t.campStove) return 'Prefers not to cook';
+  return undefined;
+}
+
+function verdictFor(food: FoodItem, m: PlanMember): MemberVerdict & { value: number | undefined } {
+  const safety = checkFood(food, m.restrictions);
+  const rating = m.ratings[food.id];
+  const refused = rating === 1 && !m.ignoredRefusals.includes(food.id);
+  const notes: string[] = [];
+  let status: MemberVerdict['status'] = 'ok';
+  // Acceptance value 0..1, undefined = unknown (excluded from the average, not scored zero).
+  let value: number | undefined = typeof rating === 'number' ? rating / 5 : undefined;
+  if (refused) { status = 'refuse'; value = 0.05; notes.push('Would refuse'); }
+  if (safety.disliked.length) { if (status === 'ok') status = 'dislike'; value = Math.min(value ?? 1, 0.1); notes.push(...safety.disliked); }
+  if (safety.avoid.length) { if (status === 'ok') status = 'avoid'; value = Math.min(value ?? 1, 0.15); notes.push(...safety.avoid.map((s) => `${s} (avoid when possible)`)); }
+  if (safety.minor.length) { if (status === 'ok') status = 'minor'; value = Math.max(0, (value ?? 0.7) - 0.15); notes.push(...safety.minor.map((s) => `${s} (minor)`)); }
+  const pc = prepConflict(food, m.prep);
+  if (pc) { if (status === 'ok') status = 'prep'; notes.push(pc); }
+  if (safety.warnings.length) notes.push(...safety.warnings);
+  return { memberId: m.id, rating, status, notes, value };
+}
+
+export function scoreFood(food: FoodItem, members: PlanMember[], tier: Tier, days: number) {
+  const verdicts = members.map((m) => verdictFor(food, m));
+  const known = verdicts.map((v) => v.value).filter((v): v is number => v !== undefined);
+  // Acceptance: mostly the average, but the least-happy person pulls it down (scope: a group
+  // favourite must not override one person's needs). Unknown answers are excluded, not zero.
+  const mean = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0.6;
+  const min = known.length ? Math.min(...known) : 0.6;
+  const acceptance = 0.7 * mean + 0.3 * min;
+
+  const proteinScore = Math.min(1, (food.nutrition.proteinG ?? 0) / 12);
+  const nutrition = 0.6 * ROLE_UTILITY[food.mealRole] + 0.4 * proteinScore;
+
+  const prepIssues = verdicts.filter((v) => v.status === 'prep').length;
+  const prep = Math.max(0, PREP_EASE[food.prep.method] - (members.length ? 0.4 * (prepIssues / members.length) : 0));
+
+  const horizonMonths = days / 30;
+  const shelfFit = Math.min(1, food.shelfLife.unopenedMonthsMax / Math.max(12, horizonMonths + 12));
+  const storage = 0.75 * shelfFit + 0.25 * ((food.packagingDurability - 1) / 2);
+
+  const costScore = food.relativeCost === 1 ? 1 : food.relativeCost === 2 ? 0.6 : 0.3;
+  const kcalPerL = food.package.volumeL ? (food.nutrition.caloriesPerServing * food.package.servingsPerPackage) / food.package.volumeL : undefined;
+  const space = kcalPerL === undefined ? 0.5 : Math.min(1, kcalPerL / 2500);
+  const cost = 0.6 * costScore + 0.4 * space;
+
+  // Short kits favour small packages you can open and finish; long reserves favour bulk.
+  const spp = food.package.servingsPerPackage;
+  const convenience = tier === 'short' ? (spp <= 4 ? 1 : spp <= 12 ? 0.6 : 0.2) : tier === 'long' ? (spp >= 8 ? 1 : 0.6) : 0.8;
+
+  const factors = { acceptance, nutrition, prep, storage, cost, convenience };
+  const score = Math.round((Object.keys(WEIGHTS) as (keyof typeof WEIGHTS)[]).reduce((s, k) => s + WEIGHTS[k] * factors[k], 0));
+  const rated = verdicts.filter((v) => typeof v.rating === 'number').length;
+  const confidence: PlannedItem['confidence'] = !members.length || rated === 0 ? 'low' : rated / members.length >= 2 / 3 ? 'high' : 'medium';
+  const counts = {
+    eligible: members.length,
+    liked: verdicts.filter((v) => v.status === 'ok' && typeof v.rating === 'number' && v.rating >= 4).length,
+    neutral: verdicts.filter((v) => v.status === 'ok' && (v.rating === 3 || v.rating === 2)).length,
+    disliked: verdicts.filter((v) => v.status === 'dislike' || v.status === 'refuse' || v.status === 'avoid').length,
+    unknown: verdicts.filter((v) => v.rating === undefined || v.rating === 'unknown').length,
+  };
+  return { score, factors, verdicts, confidence, counts, mean: known.length ? mean : undefined };
+}
+
+export function buildPlan(input: PlanInput): PlanResult {
+  const { tier, scenario, days, defaults, members } = input;
+  const warnings: string[] = [];
+  const foods = input.foods.filter((f) => f.active).sort((a, b) => a.id.localeCompare(b.id));
+  const nameOf = (id: ID) => members.find((m) => m.id === id)?.name ?? 'Someone';
+
+  if (!members.length) warnings.push('No active members, so there is nothing to plan yet.');
+  const noSurvey = members.filter((m) => !m.surveyId);
+  if (noSurvey.length) warnings.push(`No survey yet for ${noSurvey.map((m) => m.name).join(', ')}: their likes and dislikes aren’t reflected.`);
+
+  // ---- 1. Hard safeguards ----
+  const excluded: ExcludedFood[] = [];
+  const eligible: FoodItem[] = [];
+  for (const f of foods) {
+    const reasons = members
+      .map((m) => {
+        const s = checkFood(f, m.restrictions);
+        const r = [...s.blocked];
+        if (m.ratings[f.id] === 'blocked') r.push('Said they can’t eat it');
+        return { memberId: m.id, reasons: r };
+      })
+      .filter((x) => x.reasons.length);
+    if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
+    if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: 'Needs heat or cooking' }); continue; }
+    eligible.push(f);
+  }
+
+  // ---- 2. Medical food needs (individual) ----
+  const reserved: ReservedItem[] = [];
+  for (const m of members) {
+    for (const n of m.needs.filter((x) => x.active && x.domain === 'food')) {
+      if (n.kind === 'rapid-carbs') {
+        const perDay = Number(n.params?.servingsPerDay) || 3;
+        const w: string[] = [];
+        if (!n.confirmed) w.push('Amount is a placeholder; confirm it from their care plan.');
+        // Safe for this person; prefer purpose-made treatments, then anything tagged rapid-carb.
+        const options = foods.filter((f) => f.tags.includes('rapid-carb') && checkFood(f, m.restrictions).blocked.length === 0 && m.ratings[f.id] !== 'blocked')
+          .sort((a, b) => rankRapid(a) - rankRapid(b));
+        const pick = options[0];
+        const servings = perDay * days;
+        if (!pick) w.push('No safe fast-acting carb item in the catalog for this person. Add one in Catalog.');
+        else if (scenario === 'no-cook' && !NO_HEAT.includes(pick.prep.method)) w.push('Chosen item needs preparation.');
+        reserved.push({
+          memberId: m.id, needId: n.id, kind: n.kind, label: 'Fast-acting carbs', foodId: pick?.id, foodName: pick?.name,
+          servings, packages: pick ? Math.ceil(servings / pick.package.servingsPerPackage) : undefined, packageDesc: pick?.package.description, warnings: w,
+        });
+      } else if (n.kind === 'infant-formula' || n.kind === 'specialty-formula') {
+        const product = String(n.details?.product ?? '').trim();
+        const perDay = Number(n.params?.servingsPerDay) || undefined;
+        reserved.push({
+          memberId: m.id, needId: n.id, kind: n.kind, label: n.kind === 'infant-formula' ? 'Infant formula' : 'Specialty nutrition product',
+          servings: perDay ? perDay * days : undefined,
+          manual: `${product || 'Their specific product'}${perDay ? `: ${perDay * days} servings for ${days} days` : `: enough for ${days} days`}`,
+          warnings: n.kind === 'infant-formula' ? ['Never substitute other foods or homemade formula. Also store safe water for mixing.'] : [],
+        });
+      } else if (n.kind === 'other-food') {
+        reserved.push({ memberId: m.id, needId: n.id, kind: n.kind, label: 'Other food need', manual: String(n.details?.detail ?? 'See their profile'), warnings: [] });
+      }
+    }
+  }
+
+  // ---- 3. Score and choose a varied set ----
+  const scored = eligible
+    // Cooking oil and similar ingredients aren't meals; rapid-carb treatments are reserved above.
+    .filter((f) => !isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple'))
+    .map((f) => ({ f, ...scoreFood(f, members, tier, days) }));
+
+  const dailyCaloriesTotal = members.reduce((s, m) => s + (m.dailyCalories ?? defaults.defaultDailyCalories), 0);
+  const targetCalories = dailyCaloriesTotal * days;
+  const items: PlannedItem[] = [];
+  const people = members.length;
+  // Fill side groups first; whatever they can't place goes to mains, then to starches.
+  const ORDER: Bucket[] = ['produce', 'snacks', 'drinks', 'mains', 'starches'];
+  let carry = 0;
+  for (const b of ORDER) {
+    const pool = scored.filter((x) => BUCKET_OF[x.f.category] === b)
+      .sort((a, z) => z.score - a.score || a.f.name.localeCompare(z.f.name));
+    const chosen: typeof pool = [];
+    const forms = new Map<string, number>();
+    const kinds = new Set<string>();
+    const fits = (x: (typeof pool)[number], strict: boolean) => {
+      if (chosen.includes(x)) return false;
+      if (!strict) return true;
+      // Variety: at most two foods of the same category+form, one per protein type (not tuna AND sardines).
+      if ((forms.get(`${x.f.category}:${x.f.form}`) ?? 0) >= 2) return false;
+      const k = proteinKind(x.f);
+      if (k && kinds.has(k)) return false;
+      // Anything the group mostly doesn't want is only a last resort.
+      return !(x.factors.acceptance < 0.3 && chosen.length > 0);
+    };
+    const takeNext = () => {
+      const x = pool.find((y) => fits(y, true)) ?? pool.find((y) => fits(y, false) && y.factors.acceptance >= 0.3) ?? (chosen.length ? undefined : pool[0]);
+      if (!x) return false;
+      forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
+      const k = proteinKind(x.f);
+      if (k) kinds.add(k);
+      chosen.push(x);
+      return true;
+    };
+    while (chosen.length < PICKS[tier][b] && takeNext());
+
+    let share = targetCalories * BUCKET_SHARE[b] + (b === 'mains' || b === 'starches' ? carry : 0);
+    if (b === 'mains' || b === 'starches') carry = 0;
+    if (!chosen.length) { carry += share; if (members.length) warnings.push(`Nothing suitable for “${BUCKET_LABEL[b]}” in this plan; those calories were moved to other groups.`); continue; }
+
+    // Spread the bucket's calories by score, but cap each food at a realistic number of
+    // servings per person per day; past the cap, bring in the next-best food.
+    const cap = Math.max(1, people * days * SERVING_CAP[b]);
+    const alloc = new Map<(typeof pool)[number], number>();
+    for (let guard = 0; guard < 60 && share > 1; guard++) {
+      let open = chosen.filter((x) => (alloc.get(x) ?? 0) < cap);
+      if (!open.length) { if (!takeNext()) break; open = [chosen[chosen.length - 1]]; }
+      const sum = open.reduce((t, x) => t + x.score, 0) || 1;
+      let placed = 0;
+      for (const x of open) {
+        const have = alloc.get(x) ?? 0;
+        const add = Math.min(cap - have, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing);
+        alloc.set(x, have + add);
+        placed += add * x.f.nutrition.caloriesPerServing;
+      }
+      share -= placed;
+      if (placed < 1) break;
+    }
+    if (share > 1) carry += share;
+
+    for (const x of chosen) {
+      const f = x.f;
+      const raw = alloc.get(x) ?? 0;
+      if (raw <= 0) continue;
+      const servings = Math.max(1, Math.ceil(raw - 1e-9));
+      const packages = Math.ceil(servings / f.package.servingsPerPackage);
+      const why: string[] = [];
+      const rated = x.verdicts.filter((v) => typeof v.rating === 'number' && v.status === 'ok');
+      if (x.counts.liked) why.push(`Liked by ${x.counts.liked} of ${members.length}`);
+      else if (!rated.length) why.push('No ratings yet');
+      if (x.mean !== undefined) why.push(`avg ${round1(x.mean * 5)}/5`);
+      if (f.prep.method === 'ready-to-eat') why.push('no cooking'); else if (f.prep.method === 'add-cold-water') why.push('just add water');
+      if ((f.nutrition.proteinG ?? 0) >= 10) why.push('good protein');
+      why.push(`keeps ${fmtMonths(f.shelfLife.unopenedMonthsMin)}–${fmtMonths(f.shelfLife.unopenedMonthsMax)}`);
+      const flags: string[] = [];
+      for (const v of x.verdicts) {
+        if (v.status === 'avoid') flags.push(`${nameOf(v.memberId)}: ${v.notes.find((n) => n.includes('avoid')) ?? 'avoid when possible'}`);
+        if (v.status === 'dislike' || v.status === 'refuse') flags.push(`${nameOf(v.memberId)} doesn’t like this`);
+        if (v.status === 'prep') flags.push(`${nameOf(v.memberId)}: ${v.notes[v.notes.length - 1]}`);
+        for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
+      }
+      if (f.shelfLife.unopenedMonthsMax * 30 < days) flags.push(`Keeps up to ${fmtMonths(f.shelfLife.unopenedMonthsMax)}, shorter than this plan: rotate it`);
+      items.push({
+        foodId: f.id, name: f.name, category: f.category, bucket: b, score: x.score, factors: x.factors,
+        servings, packages, leftoverServings: round1(packages * f.package.servingsPerPackage - servings),
+        calories: Math.round(servings * f.nutrition.caloriesPerServing),
+        packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,
+        prepWaterGallons: round1((servings * f.prep.waterCupsPerServing) / 16),
+        needsFuel: f.prep.needsFuel, carbsG: f.nutrition.carbsG, why, flags, confidence: x.confidence, counts: x.counts,
+        verdicts: x.verdicts.map(({ value: _v, ...v }) => v),
+        volumeL: f.package.volumeL !== undefined ? round1(packages * f.package.volumeL) : undefined,
+        cost: f.priceEstimate !== undefined ? Math.round(packages * f.priceEstimate * 100) / 100 : undefined,
+        shelfLife: `${fmtMonths(f.shelfLife.unopenedMonthsMin)}–${fmtMonths(f.shelfLife.unopenedMonthsMax)}`,
+      });
+    }
+  }
+  const plannedCalories = items.reduce((s, i) => s + i.calories, 0);
+
+  // ---- Per-person coverage ----
+  const coverage: MemberCoverage[] = members.map((m) => {
+    const mains = items.filter((i) => i.bucket === 'mains');
+    const ok = mains.filter((i) => { const v = i.verdicts.find((x) => x.memberId === m.id); return v && (v.status === 'ok' || v.status === 'minor' || v.status === 'prep') && (v.rating === undefined || v.rating === 'unknown' || (typeof v.rating === 'number' && v.rating >= 3)); });
+    const notes: string[] = [];
+    let suggestion: string | undefined;
+    if (ok.length < defaults.minDailyMealOptions) {
+      notes.push(`Only ${ok.length} main dish${ok.length === 1 ? '' : 'es'} they’re happy with (target ${defaults.minDailyMealOptions}).`);
+      const alt = scored.filter((x) => BUCKET_OF[x.f.category] === 'mains' && !mains.some((i) => i.foodId === x.f.id))
+        .map((x) => ({ x, v: x.verdicts.find((v) => v.memberId === m.id)! }))
+        .filter(({ v }) => v.status === 'ok' && typeof v.rating === 'number' && v.rating >= 4)
+        .sort((a, z) => z.x.score - a.x.score)[0];
+      if (alt) suggestion = `Consider adding ${alt.x.f.name} (they rated it ${alt.v.rating}/5).`;
+    }
+    if (m.needs.some((n) => n.active && n.kind === 'carb-counting')) {
+      const missing = items.filter((i) => i.carbsG === undefined);
+      notes.push(missing.length ? `Carb counting: ${missing.length} planned food${missing.length === 1 ? ' has' : 's have'} no carb value; check labels.` : 'Carb counting: every planned food has a carb value (estimates; check labels).');
+    }
+    if (m.needs.some((n) => n.active && n.kind === 'texture-modified')) {
+      const soft = items.filter((i) => foods.find((f) => f.id === i.foodId)?.tags.includes('soft-texture')).length;
+      notes.push(`Texture needs: ${soft} planned food${soft === 1 ? ' is' : 's are'} tagged soft. Check each item suits them.`);
+    }
+    return { memberId: m.id, name: m.name, dailyCalories: m.dailyCalories ?? defaults.defaultDailyCalories, mealOptions: ok.length, mealOptionNames: ok.map((i) => i.name), hasSurvey: !!m.surveyId, suggestion, notes };
+  });
+  for (const c of coverage) if (c.mealOptions < defaults.minDailyMealOptions && members.length) warnings.push(`${c.name} has fewer main-dish options than your target of ${defaults.minDailyMealOptions}.`);
+
+  // ---- Water, fuel, equipment, storage, cost ----
+  const drinkingDays = Math.min(days, defaults.waterReserveDays);
+  const drinkingGallons = round1(people * defaults.waterGallonsPerPersonPerDay * drinkingDays);
+  const prepGallons = round1(items.reduce((s, i) => s + i.prepWaterGallons, 0) + reservedPrepWater(reserved, foods));
+  const fullHorizonGallons = round1(people * defaults.waterGallonsPerPersonPerDay * days);
+  if (days > drinkingDays && people) warnings.push(`Drinking water covers ${drinkingDays} days (your reserve setting). Covering all ${days} days would take about ${fullHorizonGallons} gallons, which needs a storage and treatment plan.`);
+
+  const fuelItems = items.filter((i) => i.needsFuel).map((i) => {
+    const f = foods.find((x) => x.id === i.foodId)!;
+    // Assumes cooking ~4 servings per pot; hot-water items share one boil per ~4 servings too.
+    const minutes = Math.ceil(i.servings / 4) * Math.max(5, f.prep.cookMinutes);
+    return { name: i.name, minutes };
+  });
+  const burnerMinutes = fuelItems.reduce((s, x) => s + x.minutes, 0);
+
+  const equipment: string[] = [];
+  const planned = items.map((i) => foods.find((f) => f.id === i.foodId)!);
+  if (planned.some((f) => f.form === 'canned')) equipment.push('Manual can opener (plus a spare)');
+  if (planned.some((f) => f.prep.needsFuel)) equipment.push('Camp stove or other safe outdoor cooking method', 'Fuel for the stove (see estimate)', 'Matches or lighter in a waterproof bag', 'Cooking pot with lid');
+  if (planned.some((f) => f.prep.waterCupsPerServing > 0)) equipment.push('Measuring cup for mixing water');
+  equipment.push('Plates, cups and utensils (disposable or easy to clean)', 'Food-safe containers with lids for leftovers', 'Trash bags');
+
+  const knownLiters = round1(items.reduce((s, i) => s + (i.volumeL ?? 0), 0));
+  const unknownItems = items.filter((i) => i.volumeL === undefined).length;
+  if (defaults.storageSpaceLiters && knownLiters > defaults.storageSpaceLiters) warnings.push(`Planned food takes about ${knownLiters} L, more than your ${defaults.storageSpaceLiters} L of storage space.`);
+
+  const priced = items.filter((i) => i.cost !== undefined);
+  const total = Math.round(priced.reduce((s, i) => s + (i.cost ?? 0), 0) * 100) / 100;
+  if (defaults.budget && priced.length && total > defaults.budget) warnings.push(`Priced items alone come to ${total.toFixed(2)}, over your budget of ${defaults.budget.toFixed(2)}.`);
+
+  if (members.length && plannedCalories < targetCalories * 0.95) warnings.push('The plan falls short of everyone’s calorie target. Add more foods to the catalog or relax a preference.');
+  if (items.some((i) => i.flags.some((f) => f.includes('avoid when possible')))) warnings.push('Some planned foods conflict with an “avoid when possible” intolerance (flagged below).');
+  if (items.length) warnings.push('Catalog entries are generic. Check every product label for allergens before buying.');
+
+  return {
+    engineVersion: ENGINE_VERSION, tier, scenario, days, people, dailyCaloriesTotal, targetCalories, plannedCalories,
+    items, reserved, excluded, coverage,
+    water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons },
+    fuel: { burnerMinutes, items: fuelItems },
+    equipment,
+    storage: { knownLiters, unknownItems, limitLiters: defaults.storageSpaceLiters },
+    cost: { total, pricedItems: priced.length, unpricedItems: items.length - priced.length, budget: defaults.budget },
+    warnings,
+  };
+}
+
+function rankRapid(f: FoodItem) {
+  if (f.id === 'glucose-tabs') return 0;
+  if (f.id === 'glucose-gel') return 1;
+  if (f.category === 'beverage') return 2;
+  return 3;
+}
+
+function reservedPrepWater(reserved: ReservedItem[], foods: FoodItem[]) {
+  return reserved.reduce((s, r) => {
+    const f = r.foodId ? foods.find((x) => x.id === r.foodId) : undefined;
+    return s + (f && r.servings ? (r.servings * f.prep.waterCupsPerServing) / 16 : 0);
+  }, 0);
+}
+
+// ---------------- Plan comparison ----------------
+export interface PlanDiffRow {
+  foodId: ID;
+  name: string;
+  kind: 'add' | 'remove' | 'more' | 'fewer';
+  before: number;
+  after: number;
+  packageDesc: string;
+}
+
+/** What to change to go from a saved plan to the current one (package counts). */
+export function diffPlans(prev: PlanResult, next: PlanResult): PlanDiffRow[] {
+  const rows: PlanDiffRow[] = [];
+  const all = (r: PlanResult) => {
+    const m = new Map<string, { name: string; packages: number; packageDesc: string }>();
+    for (const i of r.items) m.set(i.foodId, { name: i.name, packages: i.packages, packageDesc: i.packageDesc });
+    for (const x of r.reserved) if (x.foodId && x.packages) {
+      const cur = m.get(x.foodId);
+      m.set(x.foodId, { name: x.foodName ?? x.foodId, packages: (cur?.packages ?? 0) + x.packages, packageDesc: x.packageDesc ?? '' });
+    }
+    return m;
+  };
+  const a = all(prev);
+  const b = all(next);
+  for (const [id, x] of b) {
+    const old = a.get(id);
+    if (!old) rows.push({ foodId: id, name: x.name, kind: 'add', before: 0, after: x.packages, packageDesc: x.packageDesc });
+    else if (x.packages > old.packages) rows.push({ foodId: id, name: x.name, kind: 'more', before: old.packages, after: x.packages, packageDesc: x.packageDesc });
+    else if (x.packages < old.packages) rows.push({ foodId: id, name: x.name, kind: 'fewer', before: old.packages, after: x.packages, packageDesc: x.packageDesc });
+  }
+  for (const [id, x] of a) if (!b.has(id)) rows.push({ foodId: id, name: x.name, kind: 'remove', before: x.packages, after: 0, packageDesc: x.packageDesc });
+  const order = { add: 0, more: 1, fewer: 2, remove: 3 };
+  return rows.sort((x, y) => order[x.kind] - order[y.kind] || x.name.localeCompare(y.name));
+}

@@ -114,3 +114,13 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
   .no-print { display: none !important; }
   body { background: #fff; }
 }
+
+/* ---- Plan ---- */
+.stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; }
+.stat strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; font-size: 0.85rem; color: var(--muted); padding: 6px 8px; }
+.table td { padding: 8px; border-top: 1px solid var(--border); vertical-align: top; }
+details > summary { cursor: pointer; font-weight: 600; min-height: 32px; display: list-item; }

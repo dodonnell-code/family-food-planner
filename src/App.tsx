@@ -13,6 +13,7 @@ import MemberDetail from './screens/admin/MemberDetail';
 import Review from './screens/admin/Review';
 import Catalog from './screens/admin/Catalog';
 import FoodEditor from './screens/admin/FoodEditor';
+import Plan from './screens/admin/Plan';
 import Settings from './screens/admin/Settings';
 import Survey from './screens/survey/Survey';
 
@@ -32,6 +33,7 @@ function Routed() {
         <Route path="review" element={<Review />} />
         <Route path="catalog" element={<Catalog />} />
         <Route path="catalog/:id" element={<FoodEditor />} />
+        <Route path="plan" element={<Plan />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
