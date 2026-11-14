@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useSession } from '../app/session';
 import { ensureInitialized } from '../data/repo';
 import { requestPersistentStorage } from '../data/db';
@@ -68,6 +68,7 @@ export default function Setup() {
         </label>
         {err && <div className="notice danger" role="alert">{err}</div>}
         <button className="primary" disabled={busy}>{busy ? 'Setting up…' : 'Create passphrase'}</button>
+        <p className="small muted" style={{ margin: 0 }}>Moving from another iPad, or starting over? <Link to="/restore">Restore from a backup</Link> instead.</p>
       </form>
     </main>
   );

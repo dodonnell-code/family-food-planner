@@ -15,6 +15,10 @@ interface Session {
   unlock(passphrase: string): Promise<{ ok: true } | { ok: false; waitMs: number }>;
   recover(recoveryKey: string, newPassphrase: string): Promise<boolean>;
   lock(): void;
+  /** After a restore: the device now uses the backup's vault; stay unlocked with its key. */
+  adopt(dek: CryptoKey): void;
+  /** After erasing the device: no vault, locked. */
+  reset(): void;
 }
 
 const Ctx = createContext<Session | null>(null);
@@ -45,6 +49,8 @@ export function SessionProvider({ children, autoLockMinutes = 5 }: { children: R
   }, []);
 
   const lock = useCallback(() => setDek(null), []);
+  const adopt = useCallback((key: CryptoKey) => { setHasVault(true); setDek(key); }, []);
+  const reset = useCallback(() => { setDek(null); setHasVault(false); }, []);
 
   // Inactivity auto-lock while admin is unlocked.
   useEffect(() => {
@@ -107,7 +113,7 @@ export function SessionProvider({ children, autoLockMinutes = 5 }: { children: R
   }, []);
 
   return (
-    <Ctx.Provider value={{ ready, hasVault, dek, isAdmin: !!dek, setup, unlock, recover, lock }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ ready, hasVault, dek, isAdmin: !!dek, setup, unlock, recover, lock, adopt, reset }}>{children}</Ctx.Provider>
   );
 }
 

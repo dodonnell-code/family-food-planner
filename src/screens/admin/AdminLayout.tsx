@@ -29,8 +29,10 @@ export default function AdminLayout() {
             <NavLink to="/admin" end>Home</NavLink>
             <NavLink to="/admin/members">Members</NavLink>
             <NavLink to="/admin/plan">Plan</NavLink>
+            <NavLink to="/admin/reports">Reports</NavLink>
             <NavLink to="/admin/catalog">Catalog</NavLink>
             <NavLink to="/admin/settings">Settings</NavLink>
+            <NavLink to="/admin/backup">Backup</NavLink>
             <NavLink to="/admin/review">Review{attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
           </nav>
           <button className="ghost" onClick={() => { lock(); nav('/', { replace: true }); }}>Lock</button>

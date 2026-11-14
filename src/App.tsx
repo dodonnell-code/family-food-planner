@@ -15,6 +15,9 @@ import Catalog from './screens/admin/Catalog';
 import FoodEditor from './screens/admin/FoodEditor';
 import Plan from './screens/admin/Plan';
 import Settings from './screens/admin/Settings';
+import Reports from './screens/admin/Reports';
+import Backup from './screens/admin/Backup';
+import Restore from './screens/Restore';
 import Survey from './screens/survey/Survey';
 
 function Routed() {
@@ -25,6 +28,7 @@ function Routed() {
       <Route path="/" element={<Handoff />} />
       <Route path="/setup" element={<Setup />} />
       <Route path="/unlock" element={<Unlock />} />
+      <Route path="/restore" element={<Restore />} />
       <Route path="/survey/:memberId" element={<Survey />} />
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<AdminHome />} />
@@ -34,6 +38,8 @@ function Routed() {
         <Route path="catalog" element={<Catalog />} />
         <Route path="catalog/:id" element={<FoodEditor />} />
         <Route path="plan" element={<Plan />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="backup" element={<Backup />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
