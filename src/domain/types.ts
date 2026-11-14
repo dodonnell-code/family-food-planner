@@ -125,6 +125,8 @@ export type RestrictionType =
   /** A preference, not a safety rule: counts against the food for group meals; no severity or cross-contact. */
   | 'dislike';
 
+export type Strictness = 'strict' | 'avoid' | 'minor';
+
 export interface MemberRestriction {
   id: ID;
   memberId: ID;
@@ -132,6 +134,11 @@ export interface MemberRestriction {
   /** Allergen code (e.g. 'peanut') or food tag/item id the restriction targets. Plain so the engine can filter without unlocking. */
   subject: string;
   severity?: 'mild' | 'moderate' | 'severe';
+  /**
+   * Intolerances only: how strictly to apply it. Missing = 'strict' (treated like an allergy).
+   * 'avoid' and 'minor' don't keep a food out; they count against it for group meals.
+   */
+  strictness?: Strictness;
   /** Admin-confirmed restrictions cannot be removed by a respondent. */
   verifiedAt?: ISODate;
   /** Sensitive free text — encrypted. */

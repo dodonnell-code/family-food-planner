@@ -6,10 +6,10 @@ import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, 
 import { surveyRefusals } from '../../domain/preferences';
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
-import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, isPreferenceOnly, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
+import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, isPreferenceOnly, MEMBER_COLORS, RESTRICTION_TYPES, STRICTNESS, subjectLabel } from '../../app/ui';
 import NeedsCard from './NeedsCard';
 import CustomFieldsCard from './CustomFieldsCard';
-import type { AgeBand, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
+import type { AgeBand, Strictness, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
 import { useStartSurvey } from './AdminLayout';
 
 const AGE_BANDS: { v: AgeBand; l: string }[] = [
@@ -130,6 +130,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   const [result, setResult] = useState('');
   const [severity, setSeverity] = useState<'' | 'mild' | 'moderate' | 'severe'>('');
   const [crossContact, setCrossContact] = useState(true);
+  const [strictness, setStrictness] = useState<Strictness>('strict');
   const [verified, setVerified] = useState(true);
   const [note, setNote] = useState('');
   const refusals = useLiveQuery(() => surveyRefusals(member.id), [member.id]);
@@ -148,11 +149,13 @@ function RestrictionsCard({ member }: { member: Member }) {
     const subjects = [...picked, ...foods];
     if (subjects.length === 0) return setResult('Choose at least one item or type a food.');
     const pref = isPreferenceOnly(type);
+    const isIntol = type === 'intolerance';
     const { added, skipped } = await addRestrictions(member.id, subjects, {
       type,
       // Preferences carry no sensitivity: no severity, no cross-contact, nothing to confirm.
-      severity: pref ? undefined : severity || undefined,
-      cautionCrossContact: pref ? false : crossContact,
+      severity: pref || isIntol ? undefined : severity || undefined,
+      strictness: isIntol ? strictness : undefined,
+      cautionCrossContact: pref || (isIntol && strictness !== 'strict') ? false : crossContact,
       verifiedAt: pref || verified ? now() : undefined,
       adminNoteEnc: note.trim() ? await encryptString(dek, note.trim()) : undefined,
     });
@@ -181,6 +184,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   };
 
   const pref = isPreferenceOnly(type);
+  const intol = type === 'intolerance';
   const active = (restrictions ?? []).filter((r) => r.active && !isPreferenceOnly(r.type));
   const dislikes = (restrictions ?? []).filter((r) => r.active && isPreferenceOnly(r.type));
   const inactive = (restrictions ?? []).filter((r) => !r.active);
@@ -188,7 +192,7 @@ function RestrictionsCard({ member }: { member: Member }) {
   return (
     <section className="card stack">
       <h2>Allergies, restrictions &amp; dislikes</h2>
-      <p className="small muted">Allergies and restrictions are hard safety rules. Group meals will never include a food that conflicts with {member.preferredName || member.displayName}’s active allergies or restrictions, no matter how much others like it.</p>
+      <p className="small muted">Allergies, diets and strict intolerances are hard safety rules: group meals never include a conflicting food, no matter how much others like it. Intolerances marked “avoid when possible” or “barely an inconvenience” only count against a food.</p>
       {active.length === 0 && <p className="muted">None recorded.</p>}
       <div className="list">
         {active.map((r) => <RestrictionRow key={r.id} r={r} note={notes[r.id]} />)}
@@ -254,17 +258,28 @@ function RestrictionsCard({ member }: { member: Member }) {
           {pref && <span className="small muted" style={{ fontWeight: 400 }}>A short word like “tuna” matches every tuna item in the catalog.</span>}
         </label>
         {!pref && <>
-        <div className="grid">
+        {intol && (
+          <fieldset className="stack" style={{ border: 'none', padding: 0, margin: 0, gap: 8 }}>
+            <legend style={{ fontWeight: 600, marginBottom: 6 }}>How strict? (applies to all selected)</legend>
+            {STRICTNESS.map((o) => (
+              <label key={o.code} className="inline" style={{ alignItems: 'flex-start' }}>
+                <input type="radio" name="strictness" checked={strictness === o.code} onChange={() => setStrictness(o.code)} style={{ width: 24, height: 24, marginTop: 2 }} />
+                <span><strong>{o.label}</strong><br /><span className="small muted" style={{ fontWeight: 400 }}>{o.help}</span></span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+        {!intol && <div className="grid">
           <label>Severity (optional, applies to all selected)
             <select value={severity} onChange={(e) => setSeverity(e.target.value as typeof severity)}>
               <option value="">Not specified</option><option value="mild">Mild</option><option value="moderate">Moderate</option><option value="severe">Severe</option>
             </select>
           </label>
-        </div>
-        <label className="inline"><input type="checkbox" checked={crossContact} onChange={(e) => setCrossContact(e.target.checked)} /> Cross-contact is a concern (shared storage needs review)</label>
+        </div>}
+        {(!intol || strictness === 'strict') && <label className="inline"><input type="checkbox" checked={crossContact} onChange={(e) => setCrossContact(e.target.checked)} /> Cross-contact is a concern (“may contain” foods are left out too)</label>}
         <label className="inline"><input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} /> Admin-confirmed (respondent cannot remove it)</label>
         </>}
-{!pref &&         <label>Private note (encrypted, optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Planning info only, e.g. 'carries epinephrine; avoid 'may contain' labels'. Not a medical history." /></label>}
+        {!pref && <label>Private note (encrypted, optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Planning info only, e.g. 'carries epinephrine; avoid 'may contain' labels'. Not a medical history." /></label>}
         {result && <div className="notice ok" role="status">{result}</div>}
         <div><button className="primary" disabled={!dek || pendingCount === 0}>
           {pendingCount ? `Add ${pendingCount} ${pref ? 'disliked food' : 'restriction'}${pendingCount === 1 ? '' : 's'}` : pref ? 'Add disliked foods' : 'Add restrictions'}
@@ -288,6 +303,7 @@ function RestrictionRow({ r, note }: { r: MemberRestriction; note?: string }) {
         <strong>{subjectLabel(r.subject)}</strong>{' '}
         <span className="badge">{RESTRICTION_TYPES.find((t) => t.code === r.type)?.label}</span>{' '}
         {r.severity && <span className={`badge ${r.severity === 'severe' ? 'danger' : 'warn'}`}>{r.severity}</span>}{' '}
+        {r.type === 'intolerance' && <span className={`badge ${!r.strictness || r.strictness === 'strict' ? 'danger' : r.strictness === 'avoid' ? 'warn' : ''}`}>{STRICTNESS.find((x) => x.code === (r.strictness ?? 'strict'))?.label.split(':')[0]}</span>}{' '}
         {r.verifiedAt ? <span className="badge ok">confirmed</span> : <span className="badge warn">unconfirmed</span>}{' '}
         {r.cautionCrossContact && <span className="badge warn">cross-contact</span>}
         {note && <div className="small muted">{note}</div>}

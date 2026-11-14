@@ -48,6 +48,12 @@ export const RESTRICTION_TYPES: { code: RestrictionType; label: string }[] = [
   { code: 'dislike', label: 'Don’t like (not a safety issue)' },
 ];
 
+export const STRICTNESS: { code: import('../domain/types').Strictness; label: string; help: string }[] = [
+  { code: 'strict', label: 'Strict: treat like an allergy', help: 'Never used in group meals, so not stocked.' },
+  { code: 'avoid', label: 'Avoid when possible', help: 'Counts heavily against a food; used only without a good alternative, and flagged.' },
+  { code: 'minor', label: 'Barely an inconvenience', help: 'Counts a little against a food; mostly a tie-breaker.' },
+];
+
 /** Preference-only restriction types: no severity, cross-contact or confirmation. */
 export const isPreferenceOnly = (t: RestrictionType) => t === 'dislike';
 

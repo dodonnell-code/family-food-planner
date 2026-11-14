@@ -10,6 +10,9 @@ export interface SafetyResult {
   warnings: string[];
   /** Preferences ("Don't like"): count against the food when choosing group meals; not a safety issue. */
   disliked: string[];
+  /** Non-strict intolerances: 'avoid' (heavy penalty, flagged) and 'minor' (small penalty). */
+  avoid: string[];
+  minor: string[];
 }
 
 /** Allergen codes a restriction subject covers (gluten implies wheat-containing items). */
@@ -25,6 +28,8 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
   const blocked: string[] = [];
   const warnings: string[] = [];
   const disliked: string[] = [];
+  const avoid: string[] = [];
+  const minor: string[] = [];
   const contains = new Set<string>(food.allergens.contains);
   const mayContain = new Set<string>(food.allergens.mayContain ?? []);
   const tags = new Set(food.tags);
@@ -62,14 +67,18 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
     }
     // Allergen code
     const codes = ALLERGEN_ALIASES[s] ?? [s];
-    if (codes.some((c) => contains.has(c))) {
+    const lenient = r.type === 'intolerance' && (r.strictness === 'avoid' || r.strictness === 'minor');
+    if (lenient) {
+      // Non-strict intolerance: only what the food contains matters; "may contain" is ignored.
+      if (codes.some((c) => contains.has(c))) (r.strictness === 'avoid' ? avoid : minor).push(`Contains ${label}`);
+    } else if (codes.some((c) => contains.has(c))) {
       blocked.push(`Contains ${label}`);
     } else if (codes.some((c) => mayContain.has(c))) {
       if (r.cautionCrossContact || r.type === 'allergy') blocked.push(`May contain ${label}`);
       else warnings.push(`May contain ${label}`);
     }
   }
-  return { blocked, warnings, disliked };
+  return { blocked, warnings, disliked, avoid, minor };
 }
 
 export const isBlocked = (food: FoodItem, restrictions: MemberRestriction[]) => checkFood(food, restrictions).blocked.length > 0;

@@ -1,6 +1,6 @@
 // Human-readable titles and before/after rows for ChangeRecords.
 import { needKind } from './needs';
-import { RESTRICTION_TYPES, subjectLabel } from '../app/ui';
+import { RESTRICTION_TYPES, STRICTNESS, subjectLabel } from '../app/ui';
 import type { ChangeRecord, EncryptedBlob, Member, MemberNeed, MemberRestriction } from './types';
 
 export interface Lookups {
@@ -94,7 +94,7 @@ const LABELS: Record<string, string> = {
   'planningDefaults.minDailyMealOptions': 'Minimum meal options per person', 'planningDefaults.defaultDailyCalories': 'Default daily calories',
   'planningDefaults.mealsPerDay': 'Group meals per day', 'planningDefaults.storageSpaceLiters': 'Storage space (L)', 'planningDefaults.budget': 'Budget',
   'settings.autoLockMinutes': 'Auto-lock (minutes)', 'settings.backupReminderDays': 'Backup reminder (days)', 'settings.lastBackupAt': 'Last backup',
-  label: 'Field label', dataType: 'Field type', options: 'Options', sensitivity: 'Privacy', enabled: 'Enabled', value: 'Value', valueEnc: 'Value',
+  strictness: 'How strict', label: 'Field label', dataType: 'Field type', options: 'Options', sensitivity: 'Privacy', enabled: 'Enabled', value: 'Value', valueEnc: 'Value',
 };
 
 const isBlob = (v: unknown): v is EncryptedBlob => !!v && typeof v === 'object' && 'iv' in (v as object) && 'ct' in (v as object);
@@ -104,6 +104,7 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   if (v === undefined || v === null || v === '') return { kind: 'text', text: 'not set' };
   if (key === 'verifiedAt') return { kind: 'text', text: 'Yes' };
   if (typeof v === 'boolean') return { kind: 'text', text: v ? 'Yes' : 'No' };
+  if (key === 'strictness') return { kind: 'text', text: STRICTNESS.find((x) => x.code === v)?.label ?? String(v) };
   if (key === 'subject') return { kind: 'text', text: subjectLabel(String(v)) };
   if (key === 'type') return { kind: 'text', text: RESTRICTION_TYPES.find((t) => t.code === v)?.label ?? String(v) };
   if (key === 'kind') return { kind: 'text', text: needKind(String(v))?.label ?? String(v) };

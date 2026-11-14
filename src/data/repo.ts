@@ -158,7 +158,7 @@ export async function addRestriction(
   if (latest) await database.surveys.update(latest.id, { needsRefresh: true });
   await audit('restriction.add', { memberId: r.memberId, restrictionId: r.id }, r.subject, database);
   await recordChange(database, { entity: 'restriction', entityId: r.id, memberId: r.memberId, op: 'create',
-    after: pick(r, ['type', 'subject', 'severity', 'cautionCrossContact', 'verifiedAt', 'adminNoteEnc', 'active']) });
+    after: pick(r, ['type', 'subject', 'severity', 'strictness', 'cautionCrossContact', 'verifiedAt', 'adminNoteEnc', 'active']) });
   return r;
 }
 

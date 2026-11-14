@@ -39,3 +39,23 @@ describe('dislikes', () => {
     expect(checkFood(food('chicken-canned'), [r('food:tuna', { type: 'dislike' })]).disliked).toEqual([]);
   });
 });
+
+describe('intolerance strictness', () => {
+  const milk = (strictness?: 'strict' | 'avoid' | 'minor') => r('milk', { type: 'intolerance', strictness });
+  it('strict (and unset) behaves like an allergy', () => {
+    expect(checkFood(food('shelf-milk'), [milk()]).blocked).toEqual(['Contains Milk / dairy']);
+    expect(checkFood(food('shelf-milk'), [milk('strict')]).blocked).toEqual(['Contains Milk / dairy']);
+  });
+  it('"avoid when possible" and "barely an inconvenience" only count against the food', () => {
+    const a = checkFood(food('shelf-milk'), [milk('avoid')]);
+    expect(a.blocked).toEqual([]);
+    expect(a.avoid).toEqual(['Contains Milk / dairy']);
+    const m = checkFood(food('shelf-milk'), [milk('minor')]);
+    expect(m.blocked).toEqual([]);
+    expect(m.minor).toEqual(['Contains Milk / dairy']);
+  });
+  it('lenient levels ignore "may contain"', () => {
+    const res = checkFood(food('shelf-plant-milk'), [r('soy', { type: 'intolerance', strictness: 'avoid', cautionCrossContact: true })]);
+    expect(res).toMatchObject({ blocked: [], avoid: [], minor: [] });
+  });
+});
