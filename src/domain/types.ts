@@ -248,6 +248,11 @@ export interface FoodItem {
   rotationPriority: 1 | 2 | 3; // 3 = rotate soonest
   packagingDurability: 1 | 2 | 3;
   safetyNotes?: string;
+  /**
+   * Extra equipment needed to prepare or store this food (e.g. "Grain mill"), on top of what
+   * its preparation method implies (see domain/equipment.ts).
+   */
+  equipment?: string[];
   /** Can act as a main meal component (vs. snack/side). */
   mealRole: 'main' | 'side' | 'snack' | 'drink' | 'staple';
   active: boolean;

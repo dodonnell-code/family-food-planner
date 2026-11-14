@@ -134,3 +134,21 @@ describe('diffPlans', () => {
     expect(diffPlans(after, after)).toEqual([]);
   });
 });
+
+describe('equipment', () => {
+  it('lists equipment the chosen foods need, with the foods that need it', () => {
+    const onlyWheat = foods.map((f) => (f.category === 'grain' && f.id !== 'wheat-berries' ? { ...f, active: false } : f));
+    const plan = buildPlan(input([member('a'), member('b')], 'long', { foods: onlyWheat }));
+    expect(plan.items.some((i) => i.foodId === 'wheat-berries')).toBe(true);
+    const mill = plan.equipment.find((e) => e.item.startsWith('Grain mill'));
+    expect(mill?.foods).toEqual(['Hard wheat berries (whole grain)']);
+    expect(plan.equipment.some((e) => e.item.startsWith('Camp stove'))).toBe(true);
+  });
+
+  it('no-cook plans never need a stove, and pull-tab cans need no opener', () => {
+    const plan = buildPlan(input([member('a')], 'short'));
+    expect(plan.equipment.some((e) => e.item.startsWith('Camp stove'))).toBe(false);
+    const opener = plan.equipment.find((e) => e.item === 'Manual can opener');
+    expect(opener?.foods ?? []).not.toContain('Canned chicken (pull-tab)');
+  });
+});

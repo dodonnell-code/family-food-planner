@@ -81,7 +81,7 @@ const LABELS: Record<string, string> = {
   version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
   ignoredRefusals: 'Survey refusals not applied',
   name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
-  rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', mealRole: 'Meal role', needsReview: 'Needs review',
+  rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', equipment: 'Equipment needed', mealRole: 'Meal role', needsReview: 'Needs review',
   'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',
   'prep.method': 'Preparation', 'prep.cookMinutes': 'Cook time (min)', 'prep.waterCupsPerServing': 'Prep water (cups/serving)',
   'prep.edibleWithoutHeat': 'Edible without heat', 'prep.needsFuel': 'Needs fuel',

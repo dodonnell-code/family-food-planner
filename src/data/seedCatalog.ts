@@ -4,7 +4,8 @@
 import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../domain/types';
 
 // v2: adds approximate carbs per serving and rapid-carb tags.
-export const CATALOG_VERSION = 2;
+// v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
+export const CATALOG_VERSION = 3;
 
 /** Approximate total carbohydrate grams per listed serving (typical generic values; verify the label). */
 const CARBS_G: Record<string, number> = {
@@ -13,7 +14,7 @@ const CARBS_G: Record<string, number> = {
   'black-beans-canned': 20, 'chickpeas-canned': 20, 'kidney-beans-canned': 19, 'refried-beans-canned': 18,
   'lentils-canned': 18, 'lentils-dry': 30, 'split-peas-dry': 30, 'pinto-beans-dry': 29,
   crackers: 10, granola: 35, cereal: 26, 'tortillas-shelf': 24, 'rice-pouch-rte': 46, 'white-rice': 36, 'pasta-dry': 42,
-  'oats-instant': 32, 'oats-rolled': 27, cornmeal: 23, 'flour-wheat': 23, pretzels: 23,
+  'oats-instant': 32, 'oats-rolled': 27, cornmeal: 23, 'flour-wheat': 23, 'wheat-berries': 34, pretzels: 23,
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
@@ -69,6 +70,8 @@ interface Seed {
   dur?: 1 | 2 | 3;
   role: FoodItem['mealRole'];
   notes?: string;
+  /** Extra equipment beyond what the prep method implies. */
+  equip?: string[];
 }
 
 const S: Seed[] = [
@@ -83,7 +86,7 @@ const S: Seed[] = [
   { id: 'meat-pouch-rte', name: 'Ready-to-eat shelf-stable meat pouch', category: 'protein', form: 'pouch', tags: ['high-protein'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1 pouch', kcal: 110, protein: 15, pkg: '2.6 oz pouch', servings: 1, volL: 0.1, cost: 2, role: 'main' },
   { id: 'tofu-shelf', name: 'Shelf-stable silken tofu', category: 'protein', form: 'box', tags: ['vegan', 'vegetarian', 'high-protein'], contains: ['soy'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '3 oz', kcal: 50, protein: 5, pkg: '12 oz aseptic box', servings: 4, volL: 0.4, cost: 1, role: 'main', notes: 'Only if labeled shelf-stable; many tofu products need refrigeration' },
   { id: 'fd-meat', name: 'Freeze-dried diced chicken/beef', category: 'protein', form: 'freeze-dried', tags: ['high-protein'], prep: 'add-hot-water', cookMin: 10, water: 0.5, sl: SRC.freezeDried, serving: '1/2 cup', kcal: 90, protein: 16, pkg: '#10 can', servings: 28, volL: 3.5, cost: 3, rot: 1, role: 'main' },
-  { id: 'egg-powder', name: 'Powdered whole egg', category: 'protein', form: 'dry', tags: ['vegetarian'], contains: ['egg'], prep: 'heat', cookMin: 5, water: 0.25, sl: SRC.freezeDried, serving: '2 tbsp (1 egg)', kcal: 80, protein: 6, pkg: '#10 can', servings: 72, volL: 3.5, cost: 2, role: 'staple' },
+  { id: 'egg-powder', name: 'Powdered whole egg', category: 'protein', form: 'dry', tags: ['vegetarian'], contains: ['egg'], prep: 'heat', cookMin: 5, water: 0.25, sl: SRC.freezeDried, serving: '2 tbsp (1 egg)', kcal: 80, protein: 6, pkg: '#10 can', servings: 72, volL: 3.5, cost: 2, role: 'staple' , equip: ['Skillet', 'Whisk or fork'] },
 
   // ---- Legumes ----
   { id: 'black-beans-canned', name: 'Canned black beans', category: 'legume', form: 'canned', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1/2 cup', kcal: 110, protein: 7, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, role: 'side' },
@@ -92,8 +95,8 @@ const S: Seed[] = [
   { id: 'refried-beans-canned', name: 'Canned refried beans', category: 'legume', form: 'canned', tags: ['vegetarian', 'kid-friendly'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1/2 cup', kcal: 120, protein: 6, pkg: '16 oz can', servings: 3.5, volL: 0.45, cost: 1, role: 'side', notes: 'Some contain lard — check if vegetarian needed' },
   { id: 'lentils-canned', name: 'Canned lentils', category: 'legume', form: 'canned', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1/2 cup', kcal: 110, protein: 8, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, role: 'side' },
   { id: 'lentils-dry', name: 'Dry lentils', category: 'legume', form: 'dry', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'simmer', cookMin: 25, water: 1, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 170, protein: 12, pkg: '2 lb bag', servings: 20, volL: 1.2, cost: 1, role: 'staple' },
-  { id: 'split-peas-dry', name: 'Dry split peas', category: 'legume', form: 'dry', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'simmer', cookMin: 40, water: 1, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 170, protein: 12, pkg: '2 lb bag', servings: 20, volL: 1.2, cost: 1, role: 'staple' },
-  { id: 'pinto-beans-dry', name: 'Dry pinto/kidney beans', category: 'legume', form: 'dry', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'boil', cookMin: 90, water: 1.5, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 160, protein: 10, pkg: '4 lb bag', servings: 40, volL: 2.4, cost: 1, role: 'staple', notes: 'Requires soaking and long boil — high fuel and water burden. Dry kidney beans must be fully boiled (toxic if undercooked).' },
+  { id: 'split-peas-dry', name: 'Dry split peas', category: 'legume', form: 'dry', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'simmer', cookMin: 40, water: 1, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 170, protein: 12, pkg: '2 lb bag', servings: 20, volL: 1.2, cost: 1, role: 'staple' , equip: ['Large pot'] },
+  { id: 'pinto-beans-dry', name: 'Dry pinto/kidney beans', category: 'legume', form: 'dry', tags: ['vegan', 'vegetarian', 'high-protein'], prep: 'boil', cookMin: 90, water: 1.5, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 160, protein: 10, pkg: '4 lb bag', servings: 40, volL: 2.4, cost: 1, role: 'staple', notes: 'Requires soaking and long boil — high fuel and water burden. Dry kidney beans must be fully boiled (toxic if undercooked).' , equip: ['Large pot for soaking and cooking', 'Pressure cooker (optional; saves a lot of fuel)'] },
 
   // ---- Grains / starches ----
   { id: 'crackers', name: 'Crackers', category: 'grain', form: 'box', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '5 crackers', kcal: 80, pkg: '13 oz box', servings: 12, volL: 1.2, cost: 1, rot: 3, role: 'side' },
@@ -102,11 +105,12 @@ const S: Seed[] = [
   { id: 'tortillas-shelf', name: 'Shelf-stable tortillas', category: 'grain', form: 'pouch', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'ready-to-eat', sl: { ...SRC.shortDry, min: 3, max: 6 }, serving: '1 tortilla', kcal: 140, protein: 4, pkg: '10-count pack', servings: 10, volL: 0.8, cost: 1, rot: 3, role: 'side' },
   { id: 'rice-pouch-rte', name: 'Ready-to-eat rice pouch', category: 'grain', form: 'pouch', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1 cup', kcal: 220, protein: 4, pkg: '8.8 oz pouch', servings: 2, volL: 0.3, cost: 2, role: 'side', notes: 'Only if label says safe to eat without heating' },
   { id: 'white-rice', name: 'White rice', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'simmer', cookMin: 20, water: 0.5, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 160, protein: 3, pkg: '10 lb bag', servings: 100, volL: 6, cost: 1, role: 'staple' },
-  { id: 'pasta-dry', name: 'Dry pasta', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'boil', cookMin: 12, water: 2, sl: { ...SRC.longDry, min: 24, max: 360 }, serving: '2 oz dry', kcal: 200, protein: 7, pkg: '1 lb box', servings: 8, volL: 1, cost: 1, role: 'staple' },
+  { id: 'pasta-dry', name: 'Dry pasta', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'boil', cookMin: 12, water: 2, sl: { ...SRC.longDry, min: 24, max: 360 }, serving: '2 oz dry', kcal: 200, protein: 7, pkg: '1 lb box', servings: 8, volL: 1, cost: 1, role: 'staple' , equip: ['Colander or slotted spoon'] },
   { id: 'oats-instant', name: 'Instant oats', category: 'grain', form: 'packet', tags: ['vegan', 'vegetarian', 'kid-friendly'], mayContain: ['wheat', 'gluten'], prep: 'add-hot-water', cookMin: 2, water: 0.75, sl: SRC.shortDry, serving: '1 packet', kcal: 160, protein: 4, pkg: '10-packet box', servings: 10, volL: 1, cost: 1, role: 'main', notes: 'Can be soaked in cold water if no heat' },
   { id: 'oats-rolled', name: 'Rolled oats (bulk)', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian'], mayContain: ['wheat', 'gluten'], prep: 'simmer', cookMin: 5, water: 1, sl: SRC.longDry, serving: '1/2 cup dry', kcal: 150, protein: 5, pkg: '42 oz canister', servings: 30, volL: 3, cost: 1, role: 'staple' },
   { id: 'cornmeal', name: 'Cornmeal', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'gluten-free'], contains: ['corn'], prep: 'simmer', cookMin: 20, water: 1, sl: { ...SRC.longDry, min: 12, max: 120 }, serving: '1/4 cup', kcal: 110, protein: 2, pkg: '2 lb bag', servings: 25, volL: 1.5, cost: 1, role: 'staple' },
-  { id: 'flour-wheat', name: 'Wheat flour / hard wheat', category: 'grain', form: 'bulk', tags: ['vegan', 'vegetarian'], contains: ['wheat', 'gluten'], prep: 'heat', cookMin: 30, water: 0.25, sl: SRC.longDry, serving: '1/4 cup', kcal: 110, protein: 3, pkg: '25 lb bag', servings: 200, volL: 18, cost: 1, role: 'staple', notes: 'Requires baking equipment and fuel' },
+  { id: 'flour-wheat', name: 'Wheat flour', category: 'grain', form: 'bulk', tags: ['vegan', 'vegetarian'], contains: ['wheat', 'gluten'], prep: 'heat', cookMin: 30, water: 0.25, sl: { ...SRC.shortDry, min: 6, max: 12, assumptions: 'White flour in an airtight container; whole-wheat flour goes rancid sooner' }, serving: '1/4 cup', kcal: 110, protein: 3, pkg: '25 lb bag', servings: 200, volL: 18, cost: 1, role: 'staple', notes: 'For flatbread, pancakes or bread; needs fuel', equip: ['Mixing bowl', 'Skillet or Dutch oven for flatbread or bread'] },
+  { id: 'wheat-berries', name: 'Hard wheat berries (whole grain)', category: 'grain', form: 'bulk', tags: ['vegan', 'vegetarian'], contains: ['wheat', 'gluten'], prep: 'heat', cookMin: 30, water: 0.25, sl: { ...SRC.longDry, min: 120, max: 360 }, serving: '1/4 cup (ground into flour)', kcal: 160, protein: 6, pkg: '25 lb bucket', servings: 220, volL: 22, cost: 1, dur: 3, role: 'staple', notes: 'Must be ground into flour or cooked whole as a hot cereal', equip: ['Grain mill (a hand-crank mill works without power)', 'Mixing bowl', 'Skillet or Dutch oven for flatbread or bread'] },
   { id: 'pretzels', name: 'Pretzels', category: 'grain', form: 'pouch', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 oz', kcal: 110, protein: 3, pkg: '16 oz bag', servings: 16, volL: 2, cost: 1, rot: 3, role: 'snack' },
 
   // ---- Fruit ----
@@ -192,6 +196,7 @@ export function buildSeedCatalog(): FoodItem[] {
       rotationPriority: s.rot ?? (s.sl.max <= 18 ? 3 : s.sl.max <= 60 ? 2 : 1),
       packagingDurability: s.dur ?? (s.form === 'canned' || s.form === 'freeze-dried' ? 3 : s.form === 'box' || s.form === 'pouch' ? 1 : 2),
       safetyNotes: s.notes,
+      equipment: s.equip,
       mealRole: s.role,
       active: true,
       needsReview: false,

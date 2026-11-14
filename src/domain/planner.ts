@@ -9,9 +9,10 @@
 // Dislikes, "would refuse" answers and lenient intolerances count against a food; they never
 // make an unsafe food safe or vice versa.
 import { checkFood } from './safety';
+import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-1';
+export const ENGINE_VERSION = 'engine-2';
 
 /** Starter weights from the scope (not scientifically validated). Sum = 100. */
 export const WEIGHTS = { acceptance: 40, nutrition: 20, prep: 15, storage: 10, cost: 10, convenience: 5 } as const;
@@ -110,6 +111,9 @@ export interface MemberCoverage {
   notes: string[];
 }
 
+/** A piece of equipment and the planned foods that need it (empty = general use). */
+export interface EquipmentNeed { item: string; foods: string[] }
+
 export interface PlanResult {
   engineVersion: string;
   tier: Tier;
@@ -125,7 +129,7 @@ export interface PlanResult {
   coverage: MemberCoverage[];
   water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number };
   fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
-  equipment: string[];
+  equipment: EquipmentNeed[];
   storage: { knownLiters: number; unknownItems: number; limitLiters?: number };
   cost: { total: number; pricedItems: number; unpricedItems: number; budget?: number };
   warnings: string[];
@@ -440,12 +444,18 @@ export function buildPlan(input: PlanInput): PlanResult {
   });
   const burnerMinutes = fuelItems.reduce((s, x) => s + x.minutes, 0);
 
-  const equipment: string[] = [];
-  const planned = items.map((i) => foods.find((f) => f.id === i.foodId)!);
-  if (planned.some((f) => f.form === 'canned')) equipment.push('Manual can opener (plus a spare)');
-  if (planned.some((f) => f.prep.needsFuel)) equipment.push('Camp stove or other safe outdoor cooking method', 'Fuel for the stove (see estimate)', 'Matches or lighter in a waterproof bag', 'Cooking pot with lid');
-  if (planned.some((f) => f.prep.waterCupsPerServing > 0)) equipment.push('Measuring cup for mixing water');
-  equipment.push('Plates, cups and utensils (disposable or easy to clean)', 'Food-safe containers with lids for leftovers', 'Trash bags');
+  // Equipment: what the chosen foods (including reserved items) need, and which foods need it.
+  const needBy = new Map<string, string[]>();
+  const usedFoods = [...items.map((i) => i.foodId), ...reserved.map((r) => r.foodId).filter((x): x is string => !!x)];
+  for (const id of [...new Set(usedFoods)]) {
+    const f = foods.find((x) => x.id === id);
+    if (!f) continue;
+    for (const e of equipmentFor(f)) needBy.set(e, [...(needBy.get(e) ?? []), f.name]);
+  }
+  const equipment: EquipmentNeed[] = [
+    ...[...needBy].map(([item, forFoods]) => ({ item, foods: forFoods })).sort((a, z) => z.foods.length - a.foods.length || a.item.localeCompare(z.item)),
+    ...BASIC_EQUIPMENT.map((item) => ({ item, foods: [] })),
+  ];
 
   const knownLiters = round1(items.reduce((s, i) => s + (i.volumeL ?? 0), 0));
   const unknownItems = items.filter((i) => i.volumeL === undefined).length;

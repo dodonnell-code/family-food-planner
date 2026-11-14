@@ -15,6 +15,7 @@ export function normalizeFood(f: FoodItem): FoodItem {
   if (!(f.nutrition.caloriesPerServing >= 0)) throw new Error('Calories per serving must be 0 or more');
   if (f.shelfLife.unopenedMonthsMax < f.shelfLife.unopenedMonthsMin) throw new Error('Shelf life “up to” must be at least the “from” value');
   const edibleWithoutHeat = NO_HEAT.includes(f.prep.method);
+  const equipment = [...new Set((f.equipment ?? []).map((t) => t.trim()).filter(Boolean))];
   const mayContain = (f.allergens.mayContain ?? []).filter((a) => !f.allergens.contains.includes(a));
   return {
     ...f,
@@ -22,6 +23,7 @@ export function normalizeFood(f: FoodItem): FoodItem {
     tags: [...new Set(f.tags.map((t) => t.trim().toLowerCase()).filter(Boolean))],
     prep: { ...f.prep, edibleWithoutHeat, needsFuel: !edibleWithoutHeat, cookMinutes: edibleWithoutHeat ? 0 : f.prep.cookMinutes },
     allergens: { ...f.allergens, mayContain: mayContain.length ? mayContain : undefined },
+    equipment: equipment.length ? equipment : undefined,
   };
 }
 
@@ -48,7 +50,7 @@ export function blankFood(): FoodItem {
   };
 }
 
-const FOOD_KEYS: (keyof FoodItem)[] = ['name', 'category', 'form', 'examples', 'tags', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'priceEstimate', 'relativeCost', 'rotationPriority', 'packagingDurability', 'safetyNotes', 'mealRole', 'needsReview'];
+const FOOD_KEYS: (keyof FoodItem)[] = ['name', 'category', 'form', 'examples', 'tags', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'priceEstimate', 'relativeCost', 'rotationPriority', 'packagingDurability', 'safetyNotes', 'equipment', 'mealRole', 'needsReview'];
 
 export async function saveFood(input: FoodItem, database: PlannerDB = defaultDb): Promise<FoodItem> {
   const f = normalizeFood(input);

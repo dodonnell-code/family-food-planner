@@ -275,7 +275,11 @@ function WaterFuel({ r }: { r: PlanResult }) {
         </div>
         <div className="stack" style={{ gap: 4 }}>
           <h3 style={{ margin: 0 }}>Equipment</h3>
-          <ul className="small" style={{ margin: 0, paddingLeft: 20 }}>{r.equipment.map((e) => <li key={e}>{e}</li>)}</ul>
+          <ul className="small" style={{ margin: 0, paddingLeft: 20 }}>
+            {r.equipment.map((e) => (
+              <li key={e.item}>{e.item}{e.foods.length > 0 && <span className="muted"> (for {e.foods.length > 3 ? `${e.foods.slice(0, 3).join(', ')} and ${e.foods.length - 3} more` : e.foods.join(', ')})</span>}</li>
+            ))}
+          </ul>
         </div>
         <div className="stack" style={{ gap: 4 }}>
           <h3 style={{ margin: 0 }}>Space &amp; cost</h3>

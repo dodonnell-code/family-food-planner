@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db } from '../../data/db';
 import { blankFood, saveFood, setFoodActive } from '../../data/adminRepo';
+import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
 import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../../domain/types';
@@ -35,6 +36,7 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
   const nav = useNavigate();
   const [f, setF] = useState<FoodItem>(initial);
   const [tags, setTags] = useState(initial.tags.join(', '));
+  const [equip, setEquip] = useState((initial.equipment ?? []).join(', '));
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState('');
 
@@ -53,7 +55,7 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
     e.preventDefault();
     setErr('');
     try {
-      const out = await saveFood({ ...f, tags: tags.split(',') });
+      const out = await saveFood({ ...f, tags: tags.split(','), equipment: equip.split(',') });
       if (isNew) nav(`/admin/catalog/${out.id}`, { replace: true });
       setSaved('Saved. The change is listed in Review.');
       window.setTimeout(() => setSaved(''), 2500);
@@ -140,6 +142,12 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
           <label>Prep water per serving (cups)<input type="number" min={0} step={0.25} value={f.prep.waterCupsPerServing} onChange={(e) => setIn('prep', { waterCupsPerServing: num(e.target.value) ?? 0 })} /></label>
         </div>
         <span className={`badge ${noHeat ? 'ok' : 'warn'}`} style={{ alignSelf: 'flex-start' }}>{noHeat ? 'Counts for the no-cook (no power) plan' : 'Needs heat and fuel: limited-cooking plans only'}</span>
+        <label>Other equipment needed (separate with commas)
+          <input value={equip} onChange={(e) => setEquip(e.target.value)} placeholder="e.g. Grain mill, Pressure cooker" />
+          <span className="small muted" style={{ fontWeight: 400 }}>
+            Added automatically from the preparation and package: {implicitEquipment(f).join('; ') || 'nothing'}.
+          </span>
+        </label>
       </section>
 
       <section className="card stack">
