@@ -4,6 +4,8 @@ import type {
   Household,
   ID,
   Member,
+  MemberCondition,
+  MemberNeed,
   MemberRestriction,
   MemberStatus,
   PlanningProfile,
@@ -105,9 +107,11 @@ export async function setMemberStatus(id: ID, status: MemberStatus, database: Pl
 /** Admin-only merge: moves all records from `fromId` onto `intoId`, archives `fromId`. Never automatic. */
 export async function mergeMembers(intoId: ID, fromId: ID, database: PlannerDB = defaultDb) {
   if (intoId === fromId) throw new Error('Cannot merge a member into itself');
-  await database.transaction('rw', [database.members, database.surveys, database.restrictions, database.customValues, database.audit], async () => {
+  await database.transaction('rw', [database.members, database.surveys, database.restrictions, database.needs, database.conditions, database.customValues, database.audit], async () => {
     await database.surveys.where('memberId').equals(fromId).modify({ memberId: intoId });
     await database.restrictions.where('memberId').equals(fromId).modify({ memberId: intoId });
+    await database.needs.where('memberId').equals(fromId).modify({ memberId: intoId });
+    await database.conditions.where('memberId').equals(fromId).modify({ memberId: intoId });
     await database.customValues.where('memberId').equals(fromId).delete(); // keep target's values
     await database.members.update(fromId, { status: 'archived', updatedAt: now() });
     await audit('member.merge', { intoId, fromId }, undefined, database);
@@ -136,6 +140,55 @@ export async function addRestriction(
   if (latest) await database.surveys.update(latest.id, { needsRefresh: true });
   await audit('restriction.add', { memberId: r.memberId, restrictionId: r.id }, r.subject, database);
   return r;
+}
+
+/** Add several restrictions at once (one record per subject); skips subjects already active for the member. */
+export async function addRestrictions(
+  memberId: ID,
+  subjects: string[],
+  common: Omit<MemberRestriction, 'id' | 'createdAt' | 'active' | 'memberId' | 'subject'>,
+  database: PlannerDB = defaultDb,
+): Promise<{ added: MemberRestriction[]; skipped: string[] }> {
+  const existing = await database.restrictions.where('memberId').equals(memberId).filter((r) => r.active).toArray();
+  const have = new Set(existing.map((r) => `${r.type}|${r.subject.toLowerCase()}`));
+  const added: MemberRestriction[] = [];
+  const skipped: string[] = [];
+  for (const subject of [...new Set(subjects.map((s) => s.trim()).filter(Boolean))]) {
+    if (have.has(`${common.type}|${subject.toLowerCase()}`)) skipped.push(subject);
+    else added.push(await addRestriction({ ...common, memberId, subject }, database));
+  }
+  return { added, skipped };
+}
+
+// ---------------- Needs & conditions ----------------
+export async function addNeed(input: Omit<MemberNeed, 'id' | 'createdAt' | 'updatedAt' | 'active'>, database: PlannerDB = defaultDb): Promise<MemberNeed> {
+  const ts = now();
+  const n: MemberNeed = { ...input, id: uid(), active: true, createdAt: ts, updatedAt: ts };
+  await database.needs.add(n);
+  await audit('need.add', { memberId: n.memberId, needId: n.id }, `${n.domain}:${n.kind}`, database);
+  return n;
+}
+
+export async function updateNeed(id: ID, patch: Partial<Pick<MemberNeed, 'params' | 'confirmed' | 'detailsEnc'>>, database: PlannerDB = defaultDb) {
+  await database.needs.update(id, { ...patch, updatedAt: now() });
+  await audit('need.update', { needId: id }, undefined, database);
+}
+
+export async function deactivateNeed(id: ID, database: PlannerDB = defaultDb) {
+  await database.needs.update(id, { active: false, updatedAt: now() });
+  await audit('need.deactivate', { needId: id }, undefined, database);
+}
+
+export async function addCondition(memberId: ID, labelEnc: MemberCondition['labelEnc'], database: PlannerDB = defaultDb): Promise<MemberCondition> {
+  const c: MemberCondition = { id: uid(), memberId, labelEnc, active: true, createdAt: now() };
+  await database.conditions.add(c);
+  await audit('condition.add', { memberId, conditionId: c.id }, undefined, database);
+  return c;
+}
+
+export async function deactivateCondition(id: ID, database: PlannerDB = defaultDb) {
+  await database.conditions.update(id, { active: false });
+  await audit('condition.deactivate', { conditionId: id }, undefined, database);
 }
 
 export async function deactivateRestriction(id: ID, database: PlannerDB = defaultDb) {

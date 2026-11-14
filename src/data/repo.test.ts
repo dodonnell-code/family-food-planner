@@ -2,7 +2,11 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PlannerDB, uid } from './db';
 import {
+  addCondition,
   addMember,
+  addNeed,
+  addRestrictions,
+  mergeMembers,
   addRestriction,
   answersFor,
   ensureInitialized,
@@ -136,5 +140,53 @@ describe('catalog upgrade', () => {
   });
   it('every seed entry has a carb estimate', () => {
     expect(buildSeedCatalog().filter((f) => f.nutrition.carbsG === undefined).map((f) => f.id)).toEqual([]);
+  });
+});
+
+describe('multiple restrictions, needs and conditions', () => {
+  it('adds several restrictions at once and skips duplicates', async () => {
+    const m = await addMember({ displayName: 'Sam' }, db);
+    const r1 = await addRestrictions(m.id, ['peanut', 'tree-nut', 'sesame'], { type: 'allergy' }, db);
+    expect(r1.added).toHaveLength(3);
+    const r2 = await addRestrictions(m.id, ['peanut', 'food:mushrooms'], { type: 'allergy' }, db);
+    expect(r2.added.map((r) => r.subject)).toEqual(['food:mushrooms']);
+    expect(r2.skipped).toEqual(['peanut']);
+  });
+
+  it('stores multiple needs and conditions per member and moves them on merge', async () => {
+    const a = await addMember({ displayName: 'Sam' }, db);
+    const dup = await addMember({ displayName: 'Sam (dup)' }, db);
+    await addNeed({ memberId: a.id, domain: 'food', kind: 'rapid-carbs', params: { servingsPerDay: 3 }, confirmed: false }, db);
+    await addNeed({ memberId: a.id, domain: 'food', kind: 'carb-counting', params: {}, confirmed: true }, db);
+    await addNeed({ memberId: dup.id, domain: 'food', kind: 'other-food', params: {}, confirmed: true }, db);
+    await addCondition(a.id, { iv: 'x', ct: 'y' }, db);
+    await addCondition(dup.id, { iv: 'x', ct: 'z' }, db);
+    await mergeMembers(a.id, dup.id, db);
+    expect(await db.needs.where('memberId').equals(a.id).count()).toBe(3);
+    expect(await db.conditions.where('memberId').equals(a.id).count()).toBe(2);
+  });
+});
+
+describe('DB v1 → v2 upgrade', () => {
+  it('converts old single health-needs fields into need and condition records', async () => {
+    const name = `test-${uid()}`;
+    const { default: Dexie } = await import('dexie');
+    const v1 = new Dexie(name);
+    v1.version(1).stores({ members: 'id, householdId, status' });
+    await v1.table('members').add({
+      id: 'z', householdId: 'h', displayName: 'Sam', status: 'active', createdAt: '', updatedAt: '',
+      planningProfile: { presence: 'usually-present', healthNeeds: { rapidCarbs: { enabled: true, servingsPerDay: 4, confirmed: true }, carbCounting: true } },
+      conditionLabelEnc: { iv: 'a', ct: 'b' },
+    });
+    v1.close();
+
+    const v2 = new PlannerDB(name);
+    const needs = await v2.needs.where('memberId').equals('z').toArray();
+    expect(needs.map((n) => n.kind).sort()).toEqual(['carb-counting', 'rapid-carbs']);
+    expect(needs.find((n) => n.kind === 'rapid-carbs')?.params.servingsPerDay).toBe(4);
+    expect(await v2.conditions.where('memberId').equals('z').count()).toBe(1);
+    const z = await v2.members.get('z');
+    expect(z?.planningProfile.healthNeeds).toBeUndefined();
+    expect(z?.conditionLabelEnc).toBeUndefined();
   });
 });

@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db, now } from '../../data/db';
-import { addRestriction, deactivateRestriction, mergeMembers, setMemberStatus, updateMember } from '../../data/repo';
+import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, updateMember } from '../../data/repo';
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
 import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
-import { RAPID_CARB_PLACEHOLDER_SERVINGS } from '../../domain/types';
-import type { AgeBand, HealthNeeds, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
+import NeedsCard from './NeedsCard';
+import type { AgeBand, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
 import { useStartSurvey } from './AdminLayout';
 
 const AGE_BANDS: { v: AgeBand; l: string }[] = [
@@ -43,7 +43,7 @@ function MemberEditor({ member }: { member: Member }) {
 
       <ProfileCard member={member} onSaved={() => flash('Profile saved')} />
       <RestrictionsCard member={member} />
-      <HealthNeedsCard member={member} onSaved={() => flash('Food-related health needs saved')} />
+      <NeedsCard member={member} />
       <PrivateNotesCard member={member} onSaved={() => flash('Private note saved (encrypted)')} />
       <SurveyHistoryCard memberId={member.id} />
       <StatusCard member={member} onMerged={() => nav('/admin/members')} />
@@ -66,7 +66,6 @@ function ProfileCard({ member, onSaved }: { member: Member; onSaved: () => void 
     const { displayName, preferredName, color, ...profile } = f;
     const planningProfile: PlanningProfile = {
       ...profile,
-      healthNeeds: member.planningProfile.healthNeeds, // owned by HealthNeedsCard; keep latest saved value
       dailyCalorieGoal: profile.dailyCalorieGoal ? Number(profile.dailyCalorieGoal) : undefined,
     };
     await updateMember(member.id, { displayName: displayName.trim(), preferredName: preferredName.trim() || undefined, color, planningProfile });
@@ -123,8 +122,9 @@ function RestrictionsCard({ member }: { member: Member }) {
   const restrictions = useLiveQuery(() => db.restrictions.where('memberId').equals(member.id).toArray(), [member.id]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [type, setType] = useState<RestrictionType>('allergy');
-  const [subject, setSubject] = useState('peanut');
+  const [picked, setPicked] = useState<string[]>([]);
   const [customFood, setCustomFood] = useState('');
+  const [result, setResult] = useState('');
   const [severity, setSeverity] = useState<'' | 'mild' | 'moderate' | 'severe'>('');
   const [crossContact, setCrossContact] = useState(true);
   const [verified, setVerified] = useState(true);
@@ -139,20 +139,39 @@ function RestrictionsCard({ member }: { member: Member }) {
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!dek) return;
-    const subj = subject === '__food' ? `food:${customFood.trim()}` : subject;
-    if (subj === 'food:') return;
-    await addRestriction({
-      memberId: member.id,
+    const foods = customFood.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).map((s) => `food:${s}`);
+    const subjects = [...picked, ...foods];
+    if (subjects.length === 0) return setResult('Choose at least one item or type a food.');
+    const { added, skipped } = await addRestrictions(member.id, subjects, {
       type,
-      subject: subj,
       severity: severity || undefined,
       cautionCrossContact: crossContact,
       verifiedAt: verified ? now() : undefined,
       adminNoteEnc: note.trim() ? await encryptString(dek, note.trim()) : undefined,
     });
+    setResult(
+      `Added ${added.length} restriction${added.length === 1 ? '' : 's'}.` +
+        (skipped.length ? ` Already recorded: ${skipped.map(subjectLabel).join(', ')}.` : ''),
+    );
+    setPicked([]);
     setNote('');
     setCustomFood('');
   }
+
+  const pendingCount = picked.length + customFood.split(/[,;\n]/).filter((x) => x.trim()).length;
+  const toggle = (code: string) => setPicked((p) => (p.includes(code) ? p.filter((x) => x !== code) : [...p, code]));
+  const activeSubjects = new Set((restrictions ?? []).filter((r) => r.active && r.type === type).map((r) => r.subject));
+  const Chip = ({ code, label }: { code: string; label: string }) => {
+    const on = picked.includes(code);
+    const has = activeSubjects.has(code);
+    return (
+      <button type="button" aria-pressed={on} disabled={has} title={has ? 'Already recorded' : undefined} onClick={() => toggle(code)}
+        style={{ minHeight: 44, padding: '0 14px', borderRadius: 999, fontWeight: 600,
+          background: on ? 'var(--accent)' : 'var(--surface)', color: on ? 'var(--accent-ink)' : 'var(--text)', borderColor: on ? 'var(--accent)' : 'var(--border)' }}>
+        {on ? '✓ ' : ''}{label}
+      </button>
+    );
+  };
 
   const active = (restrictions ?? []).filter((r) => r.active);
   const inactive = (restrictions ?? []).filter((r) => !r.active);
@@ -167,22 +186,26 @@ function RestrictionsCard({ member }: { member: Member }) {
       </div>
 
       <form className="stack" onSubmit={add} style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-        <h3>Add a restriction</h3>
+        <h3>Add restrictions</h3>
+        <p className="small muted" style={{ margin: 0 }}>Tap everything that applies. You can pick several at once, and add more later.</p>
+        <label style={{ maxWidth: 360 }}>Type
+          <select value={type} onChange={(e) => { setType(e.target.value as RestrictionType); setPicked([]); }}>
+            {RESTRICTION_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+          </select>
+        </label>
+        <div className="stack" style={{ gap: 6 }}>
+          <span style={{ fontWeight: 600 }}>Allergens</span>
+          <div className="row" style={{ gap: 8 }}>{ALLERGENS.map((a) => <Chip key={a.code} code={a.code} label={a.label} />)}</div>
+        </div>
+        <div className="stack" style={{ gap: 6 }}>
+          <span style={{ fontWeight: 600 }}>Diets &amp; exclusions</span>
+          <div className="row" style={{ gap: 8 }}>{DIET_TAGS.map((d) => <Chip key={d.code} code={d.code} label={d.label} />)}</div>
+        </div>
+        <label>Specific foods (optional — separate with commas)
+          <input value={customFood} onChange={(e) => setCustomFood(e.target.value)} placeholder="e.g. mushrooms, olives, coconut" />
+        </label>
         <div className="grid">
-          <label>Type
-            <select value={type} onChange={(e) => setType(e.target.value as RestrictionType)}>
-              {RESTRICTION_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-            </select>
-          </label>
-          <label>What it applies to
-            <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-              <optgroup label="Allergens">{ALLERGENS.map((a) => <option key={a.code} value={a.code}>{a.label}</option>)}</optgroup>
-              <optgroup label="Diets & exclusions">{DIET_TAGS.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}</optgroup>
-              <option value="__food">A specific food (type it)…</option>
-            </select>
-          </label>
-          {subject === '__food' && <label>Food<input value={customFood} onChange={(e) => setCustomFood(e.target.value)} placeholder="e.g. mushrooms" /></label>}
-          <label>Severity (optional)
+          <label>Severity (optional, applies to all selected)
             <select value={severity} onChange={(e) => setSeverity(e.target.value as typeof severity)}>
               <option value="">Not specified</option><option value="mild">Mild</option><option value="moderate">Moderate</option><option value="severe">Severe</option>
             </select>
@@ -191,7 +214,10 @@ function RestrictionsCard({ member }: { member: Member }) {
         <label className="inline"><input type="checkbox" checked={crossContact} onChange={(e) => setCrossContact(e.target.checked)} /> Cross-contact is a concern (shared storage needs review)</label>
         <label className="inline"><input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} /> Admin-confirmed (respondent cannot remove it)</label>
         <label>Private note (encrypted, optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Planning info only, e.g. 'carries epinephrine; avoid 'may contain' labels'. Not a medical history." /></label>
-        <div><button className="primary" disabled={!dek}>Add restriction</button></div>
+        {result && <div className="notice ok" role="status">{result}</div>}
+        <div><button className="primary" disabled={!dek || pendingCount === 0}>
+          {pendingCount ? `Add ${pendingCount} restriction${pendingCount === 1 ? '' : 's'}` : 'Add restrictions'}
+        </button></div>
       </form>
 
       {inactive.length > 0 && (
@@ -222,75 +248,6 @@ function RestrictionRow({ r, note }: { r: MemberRestriction; note?: string }) {
   );
 }
 
-function HealthNeedsCard({ member, onSaved }: { member: Member; onSaved: () => void }) {
-  const { dek } = useSession();
-  const name = member.preferredName || member.displayName.split(' ')[0];
-  const [n, setN] = useState<HealthNeeds>(member.planningProfile.healthNeeds ?? {});
-  const [label, setLabel] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!dek) return;
-    if (!member.conditionLabelEnc) setLabel('');
-    else decryptString(dek, member.conditionLabelEnc).then(setLabel, () => setLabel('[unreadable]'));
-  }, [dek, member.conditionLabelEnc]);
-
-  const rc = n.rapidCarbs ?? { enabled: false, servingsPerDay: RAPID_CARB_PLACEHOLDER_SERVINGS, confirmed: false };
-  const setRc = (patch: Partial<typeof rc>) => setN((x) => ({ ...x, rapidCarbs: { ...rc, ...patch } }));
-  const flag = (k: 'carbCounting' | 'infantFormula' | 'textureModified' | 'specialtyFormula', v: boolean) => setN((x) => ({ ...x, [k]: v }));
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!dek || label === null) return;
-    await updateMember(member.id, {
-      planningProfile: { ...member.planningProfile, healthNeeds: n },
-      conditionLabelEnc: label.trim() ? await encryptString(dek, label.trim()) : undefined,
-    });
-    onSaved();
-  }
-
-  return (
-    <form className="card stack" onSubmit={save}>
-      <h2>Food-related health needs</h2>
-      <p className="small muted">Planning flags only. The app never suggests doses or treatment, and these details stay admin-only, excluded from the family summary unless you choose a detailed report.</p>
-
-      <label>Condition (optional, encrypted)
-        <input value={label ?? ''} disabled={label === null} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Type 1 diabetes" />
-      </label>
-
-      <div className="stack" style={{ gap: 8 }}>
-        <label className="inline"><input type="checkbox" checked={rc.enabled} onChange={(e) => setRc({ enabled: e.target.checked })} />
-          Needs fast-acting carbs on hand (low blood sugar)</label>
-        {rc.enabled && (
-          <div className="stack" style={{ marginLeft: 36, gap: 8 }}>
-            <label style={{ maxWidth: 360 }}>Fast-acting carb servings to reserve per day
-              <input type="number" inputMode="numeric" min={1} max={20} value={rc.servingsPerDay}
-                onChange={(e) => setRc({ servingsPerDay: Math.max(1, Number(e.target.value) || 1), confirmed: true })} />
-            </label>
-            {rc.confirmed ? (
-              <span className="badge ok" style={{ alignSelf: 'flex-start' }}>amount set by admin</span>
-            ) : (
-              <div className="notice small">
-                {RAPID_CARB_PLACEHOLDER_SERVINGS} per day is a <strong>placeholder</strong>, not a recommendation. Set the amount that matches {name}'s care plan.
-                <div style={{ marginTop: 8 }}><button type="button" onClick={() => setRc({ confirmed: true })}>Keep {rc.servingsPerDay} per day</button></div>
-              </div>
-            )}
-            <span className="small muted">These are reserved for {name} in every plan (glucose tablets, gel, juice boxes and similar) and listed separately from shared food.</span>
-          </div>
-        )}
-        <label className="inline"><input type="checkbox" checked={!!n.carbCounting} onChange={(e) => flag('carbCounting', e.target.checked)} />
-          Needs carb counts for meals (shows carbs per serving; favors consistently labeled foods)</label>
-        <label className="inline"><input type="checkbox" checked={!!n.infantFormula} onChange={(e) => flag('infantFormula', e.target.checked)} />
-          Uses infant formula</label>
-        <label className="inline"><input type="checkbox" checked={!!n.textureModified} onChange={(e) => flag('textureModified', e.target.checked)} />
-          Needs soft or texture-modified food</label>
-        <label className="inline"><input type="checkbox" checked={!!n.specialtyFormula} onChange={(e) => flag('specialtyFormula', e.target.checked)} />
-          Uses a specialty or medical formula / nutrition product</label>
-      </div>
-      <div><button className="primary" disabled={label === null}>Save health needs</button></div>
-    </form>
-  );
-}
-
 function PrivateNotesCard({ member, onSaved }: { member: Member; onSaved: () => void }) {
   const { dek } = useSession();
   const [text, setText] = useState<string | null>(null);
@@ -308,7 +265,7 @@ function PrivateNotesCard({ member, onSaved }: { member: Member; onSaved: () => 
   return (
     <section className="card stack">
       <h2>Private notes</h2>
-      <p className="small muted">Health or feeding information relevant to planning (e.g. needs rapid carbs for low blood sugar, uses formula, needs soft textures). Encrypted on this iPad and excluded from non-detailed reports. Does not generate treatment advice.</p>
+      <p className="small muted">Anything else worth knowing for planning that doesn't fit above. Encrypted on this iPad and excluded from non-detailed reports.</p>
       <textarea value={text ?? ''} disabled={text === null} onChange={(e) => setText(e.target.value)} />
       <div><button onClick={save} disabled={text === null}>Save note</button></div>
     </section>

@@ -1,3 +1,5 @@
+import type { NeedDomain } from './needs';
+
 // Domain model — mirrors scope §9. All keys are immutable IDs, never names.
 
 export type ID = string;
@@ -32,29 +34,47 @@ export type MemberStatus = 'active' | 'inactive' | 'archived';
 export type AgeBand = 'infant' | 'toddler' | 'child' | 'teen' | 'adult' | 'older-adult';
 export type Presence = 'usually-present' | 'occasional-guest' | 'temporary-guest';
 
-/**
- * Food-related health needs (scope §4 "Health/feeding"). Planning flags only — never
- * treatment advice. Quantities are entered by the admin; unconfirmed values are placeholders.
- */
-export interface HealthNeeds {
-  /** Low blood sugar: reserve fast-acting carbs for this person in every tier. */
-  rapidCarbs?: {
-    enabled: boolean;
-    servingsPerDay: number;
-    /** false = placeholder value the admin hasn't confirmed (e.g. with the care team). */
-    confirmed: boolean;
-  };
-  /** Show carbs per serving and prefer foods with consistent, labeled carbs. */
+/** @deprecated v1 shape, migrated to MemberNeed records by the DB v2 upgrade. */
+export interface LegacyHealthNeeds {
+  rapidCarbs?: { enabled: boolean; servingsPerDay: number; confirmed: boolean };
   carbCounting?: boolean;
   infantFormula?: boolean;
   textureModified?: boolean;
   specialtyFormula?: boolean;
 }
 
-export const RAPID_CARB_PLACEHOLDER_SERVINGS = 3;
+/**
+ * A planning need for one member (scope §4 "Health/feeding"), extensible by domain —
+ * see domain/needs.ts. Planning information only, never treatment advice.
+ */
+export interface MemberNeed {
+  id: ID;
+  memberId: ID;
+  domain: NeedDomain;
+  kind: string;
+  /** Numeric parameters the planner uses (e.g. servingsPerDay). */
+  params: Record<string, number>;
+  /** False while any numeric param is still a placeholder the admin hasn't confirmed. */
+  confirmed: boolean;
+  /** Free-text details/params (product names, notes) — encrypted JSON object. */
+  detailsEnc?: EncryptedBlob;
+  active: boolean;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
+/** A health condition label (e.g. "Type 1 diabetes"). Label is encrypted; admin-only. */
+export interface MemberCondition {
+  id: ID;
+  memberId: ID;
+  labelEnc: EncryptedBlob;
+  active: boolean;
+  createdAt: ISODate;
+}
 
 export interface PlanningProfile {
-  healthNeeds?: HealthNeeds;
+  /** @deprecated migrated to MemberNeed */
+  healthNeeds?: LegacyHealthNeeds;
   ageBand?: AgeBand;
   dailyCalorieGoal?: number; // admin-approved
   portionFactor?: number; // 1.0 = typical adult
@@ -81,7 +101,7 @@ export interface Member {
   planningProfile: PlanningProfile;
   /** Encrypted with the admin key (see crypto.ts). Never shown in non-detailed exports. */
   privateNotesEnc?: EncryptedBlob;
-  /** Optional condition label, e.g. "Type 1 diabetes". Encrypted; admin-only. */
+  /** @deprecated migrated to MemberCondition */
   conditionLabelEnc?: EncryptedBlob;
   updatedAt: ISODate;
 }

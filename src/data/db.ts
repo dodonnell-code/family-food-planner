@@ -6,6 +6,8 @@ import type {
   FoodItem,
   Household,
   Member,
+  MemberCondition,
+  MemberNeed,
   MemberRestriction,
   MetaEntry,
   PlanningScenario,
@@ -28,6 +30,8 @@ export class PlannerDB extends Dexie {
   snapshots!: EntityTable<PlanSnapshot, 'id'>;
   audit!: EntityTable<AuditEvent, 'id'>;
   meta!: EntityTable<MetaEntry, 'key'>;
+  needs!: EntityTable<MemberNeed, 'id'>;
+  conditions!: EntityTable<MemberCondition, 'id'>;
 
   constructor(name = 'family-food-planner') {
     super(name);
@@ -45,6 +49,36 @@ export class PlannerDB extends Dexie {
       audit: 'id, timestamp, action',
       meta: 'key',
     });
+    // v2: needs & conditions become lists (multiple per member), extensible by domain.
+    this.version(2)
+      .stores({
+        needs: 'id, memberId, domain, kind, active',
+        conditions: 'id, memberId, active',
+      })
+      .upgrade(async (tx) => {
+        const ts = new Date().toISOString();
+        const needs = tx.table<MemberNeed, string>('needs');
+        const conditions = tx.table<MemberCondition, string>('conditions');
+        const members = tx.table<Member, string>('members');
+        for (const m of await members.toArray()) {
+          const hn = m.planningProfile.healthNeeds;
+          const add = (kind: string, params: Record<string, number> = {}, confirmed = true) =>
+            needs.add({ id: crypto.randomUUID(), memberId: m.id, domain: 'food', kind, params, confirmed, active: true, createdAt: ts, updatedAt: ts });
+          if (hn?.rapidCarbs?.enabled) await add('rapid-carbs', { servingsPerDay: hn.rapidCarbs.servingsPerDay }, hn.rapidCarbs.confirmed);
+          if (hn?.carbCounting) await add('carb-counting');
+          if (hn?.infantFormula) await add('infant-formula');
+          if (hn?.textureModified) await add('texture-modified');
+          if (hn?.specialtyFormula) await add('specialty-formula');
+          if (m.conditionLabelEnc) {
+            await conditions.add({ id: crypto.randomUUID(), memberId: m.id, labelEnc: m.conditionLabelEnc, active: true, createdAt: ts });
+          }
+          if (hn || m.conditionLabelEnc) {
+            delete m.planningProfile.healthNeeds;
+            delete m.conditionLabelEnc;
+            await members.put(m);
+          }
+        }
+      });
   }
 }
 
