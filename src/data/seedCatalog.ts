@@ -6,7 +6,8 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../
 // v2: adds approximate carbs per serving and rapid-carb tags.
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
-export const CATALOG_VERSION = 4;
+// v5: more freeze-dried entries (long-term plans can skip canned food).
+export const CATALOG_VERSION = 5;
 
 /** Approximate total carbohydrate grams per listed serving (typical generic values; verify the label). */
 const CARBS_G: Record<string, number> = {
@@ -19,7 +20,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-meal': 40, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-meal': 40, 'fd-meal-veg': 45, 'fd-breakfast': 8, 'fd-chili': 35, 'fd-chicken-rice': 40, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, sunbutter: 7, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -130,6 +131,7 @@ const S: Seed[] = [
   { id: 'carrots-canned', name: 'Canned carrots / mixed vegetables', category: 'vegetable', form: 'canned', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1/2 cup', kcal: 35, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, role: 'side' },
   { id: 'tomato-sauce', name: 'Tomato sauce / diced tomatoes', category: 'vegetable', form: 'canned', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: SRC.cannedHighAcid, serving: '1/2 cup', kcal: 40, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, rot: 2, role: 'side' },
   { id: 'veg-pouch', name: 'Shelf-stable vegetable pouch', category: 'vegetable', form: 'pouch', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1/2 cup', kcal: 40, pkg: '10 oz pouch', servings: 2.5, volL: 0.3, cost: 2, role: 'side' },
+  { id: 'fd-corn-peas', name: 'Freeze-dried corn / peas', category: 'vegetable', form: 'freeze-dried', tags: ['vegan', 'vegetarian', 'kid-friendly'], contains: ['corn'], prep: 'ready-to-eat', sl: SRC.freezeDried, serving: '1/2 cup', kcal: 70, protein: 3, pkg: '#10 can', servings: 30, volL: 3.5, cost: 3, rot: 1, role: 'side', notes: 'Crunchy as a snack, or soak in water for a few minutes' },
   { id: 'fd-veg', name: 'Freeze-dried / dehydrated vegetables', category: 'vegetable', form: 'freeze-dried', tags: ['vegan', 'vegetarian'], prep: 'add-hot-water', cookMin: 10, batch: 8, water: 0.5, sl: SRC.freezeDried, serving: '1/2 cup', kcal: 30, pkg: '#10 can', servings: 40, volL: 3.5, cost: 3, rot: 1, role: 'side' },
 
   // ---- Complete meals ----
@@ -140,6 +142,10 @@ const S: Seed[] = [
   { id: 'ravioli-canned', name: 'Canned ravioli / pasta meals', category: 'meal', form: 'canned', tags: ['kid-friendly', 'beef'], contains: ['wheat', 'gluten', 'milk', 'egg'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1 cup', kcal: 230, protein: 8, pkg: '15 oz can', servings: 2, volL: 0.45, cost: 1, role: 'main' },
   { id: 'curry-pouch', name: 'Shelf-stable curry / bean dish pouch', category: 'meal', form: 'pouch', tags: ['vegetarian', 'vegan'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1 pouch', kcal: 200, protein: 7, pkg: '10 oz pouch', servings: 1, volL: 0.3, cost: 2, role: 'main', notes: 'Many Indian-style pouches are edible cold — check label; may contain dairy' },
   { id: 'meal-pouch-rte', name: 'Ready-to-eat meal pouch (MRE-style)', category: 'meal', form: 'pouch', tags: ['high-protein'], contains: ['wheat', 'milk', 'soy'], prep: 'ready-to-eat', sl: { ...SRC.pouch, min: 36, max: 60 }, serving: '1 entree', kcal: 300, protein: 15, pkg: '1 entree', servings: 1, volL: 0.35, cost: 3, role: 'main' },
+  { id: 'fd-meal-veg', name: 'Freeze-dried vegetarian meal', category: 'meal', form: 'freeze-dried', examples: 'Rice & beans, pasta primavera, lentil curry', tags: ['vegetarian', 'vegan'], mayContain: ['wheat', 'milk', 'soy'], prep: 'add-hot-water', cookMin: 10, batch: 4, water: 1, sl: SRC.freezeDried, serving: '1 cup', kcal: 250, protein: 10, pkg: '#10 can', servings: 10, volL: 3.5, cost: 3, rot: 1, role: 'main' },
+  { id: 'fd-breakfast', name: 'Freeze-dried breakfast (scrambled eggs)', category: 'meal', form: 'freeze-dried', examples: 'Scrambled eggs, breakfast skillet', tags: ['vegetarian', 'high-protein'], contains: ['egg', 'milk'], prep: 'add-hot-water', cookMin: 5, batch: 4, water: 0.75, sl: SRC.freezeDried, serving: '1 cup', kcal: 220, protein: 14, pkg: '#10 can', servings: 10, volL: 3.5, cost: 3, rot: 1, role: 'main' },
+  { id: 'fd-chili', name: 'Freeze-dried chili / beef meal', category: 'meal', form: 'freeze-dried', examples: 'Chili mac, beef stroganoff', tags: ['beef', 'high-protein'], contains: ['wheat', 'milk', 'soy'], prep: 'add-hot-water', cookMin: 10, batch: 4, water: 1, sl: SRC.freezeDried, serving: '1 cup', kcal: 280, protein: 15, pkg: '#10 can', servings: 10, volL: 3.5, cost: 3, rot: 1, role: 'main' },
+  { id: 'fd-chicken-rice', name: 'Freeze-dried chicken & rice meal', category: 'meal', form: 'freeze-dried', examples: 'Chicken teriyaki, chicken & rice', tags: ['poultry', 'high-protein'], mayContain: ['wheat', 'milk', 'soy'], prep: 'add-hot-water', cookMin: 10, batch: 4, water: 1, sl: SRC.freezeDried, serving: '1 cup', kcal: 260, protein: 14, pkg: '2-serving pouch', servings: 2, volL: 0.6, cost: 3, rot: 1, role: 'main' },
   { id: 'fd-meal', name: 'Freeze-dried complete meal', category: 'meal', form: 'freeze-dried', tags: [], contains: ['wheat', 'milk', 'soy'], prep: 'add-hot-water', cookMin: 10, batch: 4, water: 1, sl: SRC.freezeDried, serving: '1 cup', kcal: 270, protein: 12, pkg: '2-serving pouch', servings: 2, volL: 0.6, cost: 3, rot: 1, role: 'main' },
   { id: 'soup-mix-dry', name: 'Dry soup mix', category: 'meal', form: 'dry', tags: ['vegetarian'], contains: ['wheat'], prep: 'simmer', cookMin: 20, batch: 8, water: 1.5, sl: SRC.longDry, serving: '1 cup prepared', kcal: 150, protein: 6, pkg: '1 lb bag', servings: 8, volL: 0.8, cost: 1, role: 'main' },
   { id: 'mac-cheese-cup', name: 'Microwave/add-water mac & cheese cup', category: 'meal', form: 'packet', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten', 'milk'], prep: 'add-hot-water', cookMin: 5, batch: 4, water: 0.33, sl: SRC.shortDry, serving: '1 cup', kcal: 220, protein: 6, pkg: '4-pack', servings: 4, volL: 0.8, cost: 1, rot: 3, role: 'main' },

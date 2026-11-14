@@ -5,7 +5,7 @@ import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { fmtDate } from '../../app/ui';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
-import { BUCKET_LABEL, diffPlans, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
+import { BUCKET_LABEL, CANNED_SKIPPED, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
 import type { Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -312,12 +312,15 @@ function Excluded({ r, names }: { r: PlanResult; names: Map<string, string> }) {
           ))}
         </div>
       </details>
-      {scenario.length > 0 && (
-        <details>
-          <summary>{scenario.length} food{scenario.length === 1 ? '' : 's'} need cooking (not used in a no-cook plan)</summary>
-          <p className="small muted">{scenario.map((e) => e.name).join(', ')}</p>
-        </details>
-      )}
+      {[...new Set(scenario.map((e) => e.scenarioOnly ?? ''))].map((why) => {
+        const list = scenario.filter((e) => (e.scenarioOnly ?? '') === why);
+        return (
+          <details key={why}>
+            <summary>{list.length} food{list.length === 1 ? '' : 's'} not used in this plan: {why === NEEDS_COOKING ? 'they need heat or cooking' : why === CANNED_SKIPPED ? 'canned (long-term plan uses freeze-dried and dry food; change in Settings)' : why || 'scenario'}</summary>
+            <p className="small muted">{list.map((e) => e.name).join(', ')}</p>
+          </details>
+        );
+      })}
     </section>
   );
 }

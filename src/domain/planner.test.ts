@@ -173,3 +173,26 @@ describe('equipment', () => {
     expect(opener?.foods ?? []).not.toContain('Canned chicken (pull-tab)');
   });
 });
+
+describe('planner: long-term plans skip canned food', () => {
+  const cannedFans = () => ['alice', 'dan', 'sam'].map((id) => member(id, { ratings: all5(foods.filter((f) => f.form === 'canned').map((f) => f.id)) }));
+
+  it('uses no canned food in a long-term plan with cooking, even when canned food is well liked', () => {
+    const plan = buildPlan(input(cannedFans(), 'long'));
+    const used = plan.items.map((i) => food(i.foodId));
+    expect(used.filter((f) => f.form === 'canned')).toEqual([]);
+    expect(used.filter((f) => f.form === 'freeze-dried').length).toBeGreaterThanOrEqual(4);
+    expect(plan.excluded.some((e) => e.scenarioOnly && /Canned/.test(e.scenarioOnly))).toBe(true);
+    expect(plan.plannedCalories).toBeGreaterThanOrEqual(3 * 90 * DEFAULT_PLANNING.defaultDailyCalories * 0.95);
+  });
+
+  it('allows canned food again when the setting is turned off', () => {
+    const plan = buildPlan(input(cannedFans(), 'long', { defaults: { ...DEFAULT_PLANNING, longTermNoCanned: false } }));
+    expect(plan.items.some((i) => food(i.foodId).form === 'canned')).toBe(true);
+  });
+
+  it('keeps canned food in a no-cook long-term plan', () => {
+    const plan = buildPlan(input(cannedFans(), 'long', { scenario: 'no-cook' }));
+    expect(plan.items.some((i) => food(i.foodId).form === 'canned')).toBe(true);
+  });
+});

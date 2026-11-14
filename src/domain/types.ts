@@ -23,6 +23,8 @@ export interface PlanningDefaults {
   storageSpaceLiters?: number;
   /** Optional budget; only used when prices have been entered for foods. */
   budget?: number;
+  /** Long-term plans with cooking use freeze-dried/dry food instead of canned (default true). */
+  longTermNoCanned?: boolean;
 }
 
 export interface Household {

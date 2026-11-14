@@ -12,7 +12,9 @@ import { checkFood } from './safety';
 import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-2';
+export const ENGINE_VERSION = 'engine-3';
+export const NEEDS_COOKING = 'Needs heat or cooking';
+export const CANNED_SKIPPED = 'Canned (long-term plan uses freeze-dried and dry food instead)';
 
 /** Starter weights from the scope (not scientifically validated). Sum = 100. */
 export const WEIGHTS = { acceptance: 40, nutrition: 20, prep: 15, storage: 10, cost: 10, convenience: 5 } as const;
@@ -275,6 +277,10 @@ export function buildPlan(input: PlanInput): PlanResult {
   const noSurvey = members.filter((m) => !m.surveyId);
   if (noSurvey.length) warnings.push(`No survey yet for ${noSurvey.map((m) => m.name).join(', ')}: their likes and dislikes aren’t reflected.`);
 
+  // Long-term plans with cooking use freeze-dried and dry staples instead of canned food
+  // (household setting). Without cooking there'd be too little left, so canned stays there.
+  const noCanned = tier === 'long' && scenario === 'limited-cook' && defaults.longTermNoCanned !== false;
+
   // ---- 1. Hard safeguards ----
   const excluded: ExcludedFood[] = [];
   const eligible: FoodItem[] = [];
@@ -288,7 +294,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       })
       .filter((x) => x.reasons.length);
     if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
-    if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: 'Needs heat or cooking' }); continue; }
+    if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: NEEDS_COOKING }); continue; }
+    if (noCanned && f.form === 'canned') { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: CANNED_SKIPPED }); continue; }
     eligible.push(f);
   }
 

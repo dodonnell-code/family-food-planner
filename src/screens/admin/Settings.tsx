@@ -20,8 +20,9 @@ type NumKey = { [K in keyof PlanningDefaults]-?: PlanningDefaults[K] extends num
 
 function PlanningForm({ hh }: { hh: Household }) {
   const [name, setName] = useState(hh.name);
-  const [p, setP] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(hh.planningDefaults).map(([k, v]) => [k, v === undefined ? '' : String(v)])));
+  const [p, setP] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(hh.planningDefaults).filter(([, v]) => typeof v !== 'boolean').map(([k, v]) => [k, v === undefined ? '' : String(v)])));
   const [s, setS] = useState({ autoLockMinutes: String(hh.settings.autoLockMinutes), backupReminderDays: String(hh.settings.backupReminderDays), expiryWarningDays: String(hh.settings.expiryWarningDays ?? 30) });
+  const [noCanned, setNoCanned] = useState(hh.planningDefaults.longTermNoCanned !== false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string }>();
 
   const field = (k: NumKey, label: string, opts: { min?: number; max?: number; step?: number; help?: string; optional?: boolean } = {}) => (
@@ -36,7 +37,7 @@ function PlanningForm({ hh }: { hh: Household }) {
     e.preventDefault();
     setMsg(undefined);
     const n = (v: string | undefined) => (v === undefined || v.trim() === '' ? undefined : Number(v));
-    const planningDefaults = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, n(v)])) as unknown as PlanningDefaults;
+    const planningDefaults = ({ ...Object.fromEntries(Object.entries(p).map(([k, v]) => [k, n(v)])), longTermNoCanned: noCanned }) as unknown as PlanningDefaults;
     for (const k of ['shortDays', 'mediumDays', 'longDays', 'waterGallonsPerPersonPerDay', 'minDailyMealOptions', 'defaultDailyCalories', 'mealsPerDay', 'waterReserveDays'] as const) {
       if (planningDefaults[k] === undefined) return setMsg({ ok: false, text: 'Please fill in every required setting.' });
     }
@@ -90,6 +91,15 @@ function PlanningForm({ hh }: { hh: Household }) {
             </select>
           </label>
         </div>
+      </section>
+
+      <section className="card stack">
+        <h2>Long-term food</h2>
+        <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={noCanned} onChange={(e) => setNoCanned(e.target.checked)} style={{ width: 'auto' }} />
+          Use freeze-dried and dry foods instead of canned in long-term plans
+        </label>
+        <span className="small muted">Applies when cooking is possible. The no-cook long-term plan still uses canned food, since freeze-dried meals mostly need hot water.</span>
       </section>
 
       <section className="card stack">

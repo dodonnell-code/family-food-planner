@@ -24,6 +24,7 @@ export const DEFAULT_PLANNING = {
   defaultDailyCalories: 2000,
   mealsPerDay: 3,
   waterReserveDays: 3,
+  longTermNoCanned: true,
 } as const;
 
 // ---------------- Household & seed ----------------
