@@ -5,7 +5,7 @@ import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { fmtDate } from '../../app/ui';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
-import { BUCKET_LABEL, diffPlans, WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
+import { BUCKET_LABEL, diffPlans, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
 import type { Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -95,7 +95,8 @@ export default function Plan() {
           <WaterFuel r={plan.result} />
           <Excluded r={plan.result} names={names} />
           <p className="small muted">
-            How foods are scored (after safety rules): family acceptance {WEIGHTS.acceptance}%, nutrition {WEIGHTS.nutrition}%, ease of preparation {WEIGHTS.prep}%, storage life {WEIGHTS.storage}%, cost &amp; space {WEIGHTS.cost}%, convenience {WEIGHTS.convenience}%.
+            How foods are scored for this horizon (after safety rules): family acceptance {TIER_WEIGHTS[tier].acceptance}%, nutrition {TIER_WEIGHTS[tier].nutrition}%, ease of preparation {TIER_WEIGHTS[tier].prep}%, storage life {TIER_WEIGHTS[tier].storage}%, cost &amp; space {TIER_WEIGHTS[tier].cost}%, convenience {TIER_WEIGHTS[tier].convenience}%.
+            {tier === 'long' && ' Long-term plans favor dry staples that keep for years without rotation; canned food fills in.'}
             These are starting weights, not a scientific standard. Quantities are estimates from generic catalog entries; check real package sizes and labels.
           </p>
         </>

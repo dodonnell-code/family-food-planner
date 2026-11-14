@@ -117,6 +117,24 @@ describe('planner: quantities, water and needs', () => {
     }
   });
 
+  it('long-term plans are built mostly on dry staples; short-term on ready-to-eat food', () => {
+    const people = [member('a'), member('b'), member('c')];
+    const share = (tier: Tier, days: number) => {
+      const r = buildPlan(input(people, tier, { days, scenario: tier === 'short' ? 'no-cook' : 'limited-cook' }));
+      const dry = r.items.filter((i) => ['dry', 'bulk', 'freeze-dried'].includes(food(i.foodId).form)).reduce((s, i) => s + i.calories, 0);
+      return dry / r.plannedCalories;
+    };
+    expect(share('long', 90)).toBeGreaterThan(0.5);
+    expect(share('long', 365)).toBeGreaterThan(0.5);
+    expect(share('medium', 14)).toBeLessThan(0.25);
+  });
+
+  it('caps fruit/veg servings so low-calorie foods don’t balloon', () => {
+    const plan = buildPlan(input([member('a'), member('b'), member('c')], 'long', { days: 365 }));
+    const produce = plan.items.filter((i) => i.bucket === 'produce').reduce((s, i) => s + i.servings, 0);
+    expect(produce).toBeLessThanOrEqual(Math.ceil(3 * 365 * 2.5) + 4);
+  });
+
   it('is deterministic', () => {
     const i = input([member('a', { ratings: all5(['chili-canned']) }), member('b')]);
     expect(buildPlan(i)).toEqual(buildPlan(i));

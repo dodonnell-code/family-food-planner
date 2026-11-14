@@ -16,6 +16,18 @@ export const ENGINE_VERSION = 'engine-2';
 
 /** Starter weights from the scope (not scientifically validated). Sum = 100. */
 export const WEIGHTS = { acceptance: 40, nutrition: 20, prep: 15, storage: 10, cost: 10, convenience: 5 } as const;
+export type Weights = Record<keyof typeof WEIGHTS, number>;
+/**
+ * Weights by tier. A long-term reserve values shelf life and cost/space far more than
+ * convenience: it's the dry-staples base (rice, beans, wheat, oats) that canned food tops up.
+ */
+export const TIER_WEIGHTS: Record<Tier, Weights> = {
+  short: WEIGHTS,
+  medium: WEIGHTS,
+  long: { acceptance: 35, nutrition: 15, prep: 5, storage: 22, cost: 18, convenience: 5 },
+};
+/** Long-term reserves are judged on how long food keeps without rotation (in months). */
+const LONG_TERM_TARGET_MONTHS = 60;
 
 export interface PlanMember {
   id: ID;
@@ -158,8 +170,14 @@ const PICKS: Record<Tier, Record<Bucket, number>> = {
 const PREP_EASE: Record<PrepMethod, number> = { 'ready-to-eat': 1, 'add-cold-water': 0.85, 'add-hot-water': 0.6, heat: 0.5, simmer: 0.4, boil: 0.3 };
 const ROLE_UTILITY: Record<FoodItem['mealRole'], number> = { main: 1, staple: 0.8, side: 0.6, snack: 0.5, drink: 0.35 };
 const NO_HEAT: PrepMethod[] = ['ready-to-eat', 'add-cold-water'];
-/** Most servings of any one food per person per day, so low-calorie foods don't balloon. */
-const SERVING_CAP: Record<Bucket, number> = { mains: 1.25, starches: 2, produce: 1.5, snacks: 1.5, drinks: 1.5 };
+/** Most servings of any one food per person per day, by category, so no single food dominates. */
+const SERVING_CAP: Record<FoodCategory, number> = {
+  protein: 0.5, legume: 1, meal: 1, grain: 2, fruit: 1.5, vegetable: 1.5, 'fat-snack': 1, 'dairy-alt': 1, beverage: 1,
+};
+/** Most servings per person per day from a whole group (Infinity = calorie carriers). */
+const BUCKET_SERVINGS: Record<Bucket, number> = { mains: Infinity, starches: Infinity, produce: 2.5, snacks: 1.5, drinks: 1.5 };
+/** No single food may supply more than this share of its group's calories (variety). */
+const MAX_ITEM_SHARE: Record<Tier, number> = { short: 0.5, medium: 0.35, long: 0.3 };
 const PROTEIN_KINDS = ['fish', 'beef', 'poultry', 'pork'];
 const proteinKind = (f: FoodItem) => PROTEIN_KINDS.find((t) => f.tags.includes(t));
 
@@ -216,7 +234,11 @@ export function scoreFood(food: FoodItem, members: PlanMember[], tier: Tier, day
   const prep = Math.max(0, PREP_EASE[food.prep.method] - (members.length ? 0.4 * (prepIssues / members.length) : 0));
 
   const horizonMonths = days / 30;
-  const shelfFit = Math.min(1, food.shelfLife.unopenedMonthsMax / Math.max(12, horizonMonths + 12));
+  // Short/medium: does it comfortably outlast the plan? Long: how long does it keep without
+  // rotation (conservative end of the range), measured against a multi-year reserve.
+  const shelfFit = tier === 'long'
+    ? Math.min(1, food.shelfLife.unopenedMonthsMin / Math.max(LONG_TERM_TARGET_MONTHS, horizonMonths))
+    : Math.min(1, food.shelfLife.unopenedMonthsMax / Math.max(12, horizonMonths + 12));
   const storage = 0.75 * shelfFit + 0.25 * ((food.packagingDurability - 1) / 2);
 
   const costScore = food.relativeCost === 1 ? 1 : food.relativeCost === 2 ? 0.6 : 0.3;
@@ -229,7 +251,8 @@ export function scoreFood(food: FoodItem, members: PlanMember[], tier: Tier, day
   const convenience = tier === 'short' ? (spp <= 4 ? 1 : spp <= 12 ? 0.6 : 0.2) : tier === 'long' ? (spp >= 8 ? 1 : 0.6) : 0.8;
 
   const factors = { acceptance, nutrition, prep, storage, cost, convenience };
-  const score = Math.round((Object.keys(WEIGHTS) as (keyof typeof WEIGHTS)[]).reduce((s, k) => s + WEIGHTS[k] * factors[k], 0));
+  const w = TIER_WEIGHTS[tier];
+  const score = Math.round((Object.keys(w) as (keyof Weights)[]).reduce((s, k) => s + w[k] * factors[k], 0));
   const rated = verdicts.filter((v) => typeof v.rating === 'number').length;
   const confidence: PlannedItem['confidence'] = !members.length || rated === 0 ? 'low' : rated / members.length >= 2 / 3 ? 'high' : 'medium';
   const counts = {
@@ -313,7 +336,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const targetCalories = dailyCaloriesTotal * days;
   const items: PlannedItem[] = [];
   const people = members.length;
-  // Fill side groups first; whatever they can't place goes to mains, then to starches.
+  // Fill side groups first; whatever any group can't place goes to grains & staples (last).
   const ORDER: Bucket[] = ['produce', 'snacks', 'drinks', 'mains', 'starches'];
   let carry = 0;
   for (const b of ORDER) {
@@ -343,23 +366,35 @@ export function buildPlan(input: PlanInput): PlanResult {
     };
     while (chosen.length < PICKS[tier][b] && takeNext());
 
-    let share = targetCalories * BUCKET_SHARE[b] + (b === 'mains' || b === 'starches' ? carry : 0);
-    if (b === 'mains' || b === 'starches') carry = 0;
+    // Calories other groups couldn't place go to grains & staples, the natural calorie base.
+    let share = targetCalories * BUCKET_SHARE[b] + (b === 'starches' ? carry : 0);
+    if (b === 'starches') carry = 0;
     if (!chosen.length) { carry += share; if (members.length) warnings.push(`Nothing suitable for “${BUCKET_LABEL[b]}” in this plan; those calories were moved to other groups.`); continue; }
 
-    // Spread the bucket's calories by score, but cap each food at a realistic number of
-    // servings per person per day; past the cap, bring in the next-best food.
-    const cap = Math.max(1, people * days * SERVING_CAP[b]);
+    // Spread the bucket's calories by score, with caps so the plan stays realistic:
+    //  - no food above a set number of servings per person per day, or above a share of its group;
+    //  - fruit/veg, snacks and drinks are limited by servings (they're there for variety and
+    //    nutrients, not to fill calories), and what they can't place moves to mains/staples.
+    const bucketCalories = share;
+    const servingCap = (x: (typeof pool)[number]) => Math.max(1, people * days * SERVING_CAP[x.f.category]);
+    const bucketServingsLeft = { n: Number.isFinite(BUCKET_SERVINGS[b]) ? Math.max(1, people * days * BUCKET_SERVINGS[b]) : Infinity };
+    let relaxed = false;
+    const capFor = (x: (typeof pool)[number]) => (relaxed ? servingCap(x) : Math.min(servingCap(x), Math.max(1, (MAX_ITEM_SHARE[tier] * bucketCalories) / x.f.nutrition.caloriesPerServing)));
     const alloc = new Map<(typeof pool)[number], number>();
-    for (let guard = 0; guard < 60 && share > 1; guard++) {
-      let open = chosen.filter((x) => (alloc.get(x) ?? 0) < cap);
-      if (!open.length) { if (!takeNext()) break; open = [chosen[chosen.length - 1]]; }
-      const sum = open.reduce((t, x) => t + x.score, 0) || 1;
+    for (let guard = 0; guard < 80 && share > 1 && bucketServingsLeft.n > 0.01; guard++) {
+      let open = chosen.filter((x) => (alloc.get(x) ?? 0) < capFor(x) - 1e-9);
+      if (!open.length) {
+        if (takeNext()) open = [chosen[chosen.length - 1]];
+        else if (!relaxed) { relaxed = true; continue; }
+        else break;
+      }
+      const sum = open.reduce((t, x) => t + (x.score || 1), 0);
       let placed = 0;
       for (const x of open) {
         const have = alloc.get(x) ?? 0;
-        const add = Math.min(cap - have, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing);
+        const add = Math.max(0, Math.min(capFor(x) - have, bucketServingsLeft.n, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing));
         alloc.set(x, have + add);
+        bucketServingsLeft.n -= add;
         placed += add * x.f.nutrition.caloriesPerServing;
       }
       share -= placed;
