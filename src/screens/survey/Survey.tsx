@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { db, uid } from '../../data/db';
@@ -82,9 +82,10 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
   const [step, setStep] = useState(Math.min(survey.currentStep, STEPS.length - 1));
   const answerMap = useMemo(() => new Map(answers.map((a) => [a.foodItemId, a])), [answers]);
   const cur = STEPS[step];
+  const bodyRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    window.scrollTo({ top: 0 });
+    bodyRef.current?.scrollTo({ top: 0 });
   }, [step]);
 
   async function go(to: number) {
@@ -109,7 +110,8 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
         <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div style={{ width: `${pct}%` }} /></div>
       </header>
 
-      <main className="page survey-body">
+      <main className="survey-body" ref={bodyRef}>
+        <div className="survey-content">
         {cur.kind === 'intro' && <Intro name={name} />}
         {cur.kind === 'category' && (
           <CategoryStep cat={cur.cat} foods={foods.filter((f) => f.category === cur.cat.id)} restrictions={restrictions} answers={answerMap} surveyId={survey.id} />
@@ -119,6 +121,7 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
         {cur.kind === 'open' && <OpenStep survey={survey} />}
         {cur.kind === 'review' && <ReviewStep survey={survey} foods={foods} restrictions={restrictions} answers={answerMap}
           onSubmit={async () => { await submitSurvey(survey.id); nav('/?done=1', { replace: true }); }} onJump={go} />}
+        </div>
       </main>
 
       {cur.kind !== 'review' && (
