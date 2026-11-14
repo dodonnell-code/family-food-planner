@@ -4,6 +4,8 @@ import { db } from '../../data/db';
 import { Avatar, firstName, fmtDate } from '../../app/ui';
 import { loadMembersWithSurveys, surveyBadge } from './memberStatus';
 import { useStartSurvey } from './AdminLayout';
+import { AttentionList } from './Review';
+import { computeAttention } from '../../domain/attention';
 
 export default function AdminHome() {
   const [params] = useSearchParams();
@@ -13,9 +15,7 @@ export default function AdminHome() {
   const household = useLiveQuery(() => db.households.toCollection().first(), []);
   const active = rows?.filter((r) => r.member.status === 'active') ?? [];
 
-  const lastBackup = household?.settings.lastBackupAt;
-  const reminderDays = household?.settings.backupReminderDays ?? 14;
-  const backupOverdue = !lastBackup || Date.now() - Date.parse(lastBackup) > reminderDays * 86_400_000;
+  const attention = useLiveQuery(() => computeAttention(), []);
   const done = active.filter((r) => r.latest && !r.inProgress).length;
 
   return (
@@ -25,10 +25,11 @@ export default function AdminHome() {
         <span className="muted">{done} of {active.length} active members have a completed survey</span>
       </div>
 
-      {backupOverdue && (
-        <div className="notice" role="status">
-          {lastBackup ? `Last backup ${fmtDate(lastBackup)}.` : 'No backup yet.'} iPad browser storage can be cleared, so make an encrypted backup regularly. (Backups arrive in a later phase.)
-        </div>
+      {attention && attention.length > 0 && (
+        <section className="card stack">
+          <div className="spread"><h2>Needs attention <span className="badge warn">{attention.length}</span></h2><Link to="/admin/review">Review all</Link></div>
+          <AttentionList items={attention} limit={3} />
+        </section>
       )}
 
       <section className="card stack" aria-labelledby="next-h" style={picking ? { outline: '3px solid var(--accent)' } : undefined}>

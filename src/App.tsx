@@ -10,6 +10,7 @@ import AdminLayout from './screens/admin/AdminLayout';
 import AdminHome from './screens/admin/AdminHome';
 import Members from './screens/admin/Members';
 import MemberDetail from './screens/admin/MemberDetail';
+import Review from './screens/admin/Review';
 import SurveyPlaceholder from './screens/SurveyPlaceholder';
 
 function Routed() {
@@ -25,6 +26,7 @@ function Routed() {
         <Route index element={<AdminHome />} />
         <Route path="members" element={<Members />} />
         <Route path="members/:id" element={<MemberDetail />} />
+        <Route path="review" element={<Review />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
