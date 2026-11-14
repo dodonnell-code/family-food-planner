@@ -22,6 +22,8 @@ export const DEFAULT_PLANNING = {
   waterGallonsPerPersonPerDay: 1,
   minDailyMealOptions: 3,
   defaultDailyCalories: 2000,
+  mealsPerDay: 3,
+  waterReserveDays: 3,
 } as const;
 
 // ---------------- Household & seed ----------------
@@ -37,6 +39,10 @@ export async function ensureInitialized(database: PlannerDB = defaultDb): Promis
         settings: { autoLockMinutes: 5, backupReminderDays: 14 },
       };
       await database.households.add(hh);
+    } else if (Object.keys(DEFAULT_PLANNING).some((k) => !(k in hh!.planningDefaults))) {
+      // Fill in settings added in newer versions without touching existing values.
+      hh = { ...hh, planningDefaults: { ...DEFAULT_PLANNING, ...hh.planningDefaults } };
+      await database.households.put(hh);
     }
     const seeded = (await database.meta.get('catalogVersion'))?.value as number | undefined;
     if (!seeded || seeded < CATALOG_VERSION) {

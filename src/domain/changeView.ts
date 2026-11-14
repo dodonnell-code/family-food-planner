@@ -8,6 +8,7 @@ export interface Lookups {
   restrictions: Map<string, MemberRestriction>;
   needs: Map<string, MemberNeed>;
   foods?: Map<string, { name: string }>;
+  customFields?: Map<string, { label: string }>;
 }
 
 const fname = (m?: Pick<Member, 'displayName' | 'preferredName'>) => (m ? m.preferredName || m.displayName.split(/\s+/)[0] : 'Someone');
@@ -19,7 +20,17 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
   const needLabel = needKind(n?.kind ?? (c.after?.kind as string) ?? '')?.label ?? 'need';
   const restr = subjectLabel(r?.subject ?? (c.after?.subject as string) ?? '');
   const isDislike = (r?.type ?? c.after?.type) === 'dislike';
+  const foodName = l.foods?.get(c.entityId)?.name ?? (c.after?.name as string) ?? 'a food';
+  const fieldLabel = l.customFields?.get(c.entity === 'customValue' ? c.entityId.split(':')[1] : c.entityId)?.label ?? (c.after?.label as string) ?? 'custom field';
   switch (`${c.entity}.${c.op}`) {
+    case 'food.create': return `New food added: ${foodName}`;
+    case 'food.update': return `Food edited: ${foodName}`;
+    case 'food.deactivate': return `Food retired: ${foodName}`;
+    case 'food.reactivate': return `Food restored: ${foodName}`;
+    case 'household.update': return 'Planning settings changed';
+    case 'customField.create': return `Custom field added: ${fieldLabel}`;
+    case 'customField.update': return `Custom field changed: ${fieldLabel}`;
+    case 'customValue.update': return `${who}: “${fieldLabel}” changed`;
     case 'member.create': return `${who} was added`;
     case 'member.update': return c.source === 'respondent' ? `${who} suggests a profile change` : `${who}'s profile changed`;
     case 'member.status': return `${who} was ${({ active: 'reactivated', inactive: 'marked inactive', archived: 'archived' } as Record<string, string>)[c.after?.status as string] ?? 'updated'}`;
@@ -69,12 +80,27 @@ const LABELS: Record<string, string> = {
   adminNoteEnc: 'Note', active: 'Active', kind: 'Need', confirmed: 'Amount confirmed', detailsEnc: 'Details', labelEnc: 'Condition',
   version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
   ignoredRefusals: 'Survey refusals not applied',
+  name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
+  rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', mealRole: 'Meal role', needsReview: 'Needs review',
+  'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',
+  'prep.method': 'Preparation', 'prep.cookMinutes': 'Cook time (min)', 'prep.waterCupsPerServing': 'Prep water (cups/serving)',
+  'prep.edibleWithoutHeat': 'Edible without heat', 'prep.needsFuel': 'Needs fuel',
+  'shelfLife.unopenedMonthsMin': 'Shelf life from (months)', 'shelfLife.unopenedMonthsMax': 'Shelf life up to (months)', 'shelfLife.storage': 'Storage',
+  'shelfLife.source': 'Shelf-life source', 'shelfLife.sourceDate': 'Source date', 'shelfLife.assumptions': 'Assumptions',
+  'nutrition.servingDesc': 'Serving size', 'nutrition.caloriesPerServing': 'Calories per serving', 'nutrition.proteinG': 'Protein (g)', 'nutrition.carbsG': 'Carbs (g)',
+  'package.description': 'Package', 'package.servingsPerPackage': 'Servings per package', 'package.volumeL': 'Package volume (L)',
+  'planningDefaults.shortDays': 'Short-term plan (days)', 'planningDefaults.mediumDays': 'Medium-term plan (days)', 'planningDefaults.longDays': 'Long-term plan (days)',
+  'planningDefaults.waterGallonsPerPersonPerDay': 'Drinking water per person per day (gal)', 'planningDefaults.waterReserveDays': 'Water reserve (days)',
+  'planningDefaults.minDailyMealOptions': 'Minimum meal options per person', 'planningDefaults.defaultDailyCalories': 'Default daily calories',
+  'planningDefaults.mealsPerDay': 'Group meals per day', 'planningDefaults.storageSpaceLiters': 'Storage space (L)', 'planningDefaults.budget': 'Budget',
+  'settings.autoLockMinutes': 'Auto-lock (minutes)', 'settings.backupReminderDays': 'Backup reminder (days)', 'settings.lastBackupAt': 'Last backup',
+  label: 'Field label', dataType: 'Field type', options: 'Options', sensitivity: 'Privacy', enabled: 'Enabled', value: 'Value', valueEnc: 'Value',
 };
 
 const isBlob = (v: unknown): v is EncryptedBlob => !!v && typeof v === 'object' && 'iv' in (v as object) && 'ct' in (v as object);
 
 function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
-  if (isBlob(v)) return { kind: 'encrypted', blob: v, json: key === 'detailsEnc' };
+  if (isBlob(v)) return { kind: 'encrypted', blob: v, json: key === 'detailsEnc' || key === 'valueEnc' };
   if (v === undefined || v === null || v === '') return { kind: 'text', text: 'not set' };
   if (key === 'verifiedAt') return { kind: 'text', text: 'Yes' };
   if (typeof v === 'boolean') return { kind: 'text', text: v ? 'Yes' : 'No' };
@@ -82,7 +108,7 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   if (key === 'type') return { kind: 'text', text: RESTRICTION_TYPES.find((t) => t.code === v)?.label ?? String(v) };
   if (key === 'kind') return { kind: 'text', text: needKind(String(v))?.label ?? String(v) };
   if (key === 'ignoredRefusals' && Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((id) => l.foods?.get(String(id))?.name ?? String(id)).join(', ') : 'none' };
-  if (Array.isArray(v)) return { kind: 'text', text: v.length ? v.join(', ') : 'none' };
+  if (Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((x) => (key.startsWith('allergens.') ? subjectLabel(String(x)) : String(x))).join(', ') : 'none' };
   if (key === 'mergedInto') return { kind: 'text', text: fname(l.members.get(String(v))) };
   if (key === 'leftAt' || key.endsWith('guestFrom') || key.endsWith('guestUntil')) return { kind: 'text', text: new Date(String(v)).toLocaleDateString() };
   if (key === 'planningProfile.presence') return { kind: 'text', text: String(v).replace(/-/g, ' ') };
@@ -90,14 +116,14 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   return { kind: 'text', text: typeof v === 'object' ? JSON.stringify(v) : String(v) };
 }
 
+const NESTED = new Set(['planningProfile', 'params', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'planningDefaults', 'settings']);
+
 /** Flatten one level for nested objects we know about (planningProfile, params). */
 function flatten(obj: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj ?? {})) {
-    if (k === 'planningProfile' && v && typeof v === 'object') {
-      for (const [k2, v2] of Object.entries(v)) out[`planningProfile.${k2}`] = v2;
-    } else if (k === 'params' && v && typeof v === 'object') {
-      for (const [k2, v2] of Object.entries(v)) out[`params.${k2}`] = v2;
+    if (NESTED.has(k) && v && typeof v === 'object' && !Array.isArray(v)) {
+      for (const [k2, v2] of Object.entries(v)) out[`${k}.${k2}`] = v2;
     } else out[k] = v;
   }
   return out;

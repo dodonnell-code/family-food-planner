@@ -28,6 +28,8 @@ export default function AdminLayout() {
           <nav aria-label="Admin">
             <NavLink to="/admin" end>Home</NavLink>
             <NavLink to="/admin/members">Members</NavLink>
+            <NavLink to="/admin/catalog">Catalog</NavLink>
+            <NavLink to="/admin/settings">Settings</NavLink>
             <NavLink to="/admin/review">Review{attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
           </nav>
           <button className="ghost" onClick={() => { lock(); nav('/', { replace: true }); }}>Lock</button>

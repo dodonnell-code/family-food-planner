@@ -15,6 +15,14 @@ export interface PlanningDefaults {
   waterGallonsPerPersonPerDay: number; // CDC minimum 1 [R1]
   minDailyMealOptions: number; // per-person coverage threshold
   defaultDailyCalories: number; // used when a member has no admin-approved goal
+  /** Group meals per day the plan provides. */
+  mealsPerDay: number;
+  /** Drinking-water reserve: 3 days (CDC minimum) or 14 days. */
+  waterReserveDays: number;
+  /** Optional storage space available, in liters (for space estimates/warnings). */
+  storageSpaceLiters?: number;
+  /** Optional budget; only used when prices have been entered for foods. */
+  budget?: number;
 }
 
 export interface Household {
@@ -144,11 +152,16 @@ export interface CustomFieldDefinition {
   enabled: boolean;
 }
 
+export type CustomValue = string | number | boolean | string[];
+
 export interface CustomFieldValue {
   id: ID; // `${memberId}:${fieldDefinitionId}`
   memberId: ID;
   fieldDefinitionId: ID;
-  value: string | number | boolean | string[];
+  /** Plain value for 'reportable' fields. */
+  value?: CustomValue;
+  /** Encrypted JSON value for 'private' fields (the default). */
+  valueEnc?: EncryptedBlob;
 }
 
 // ---------- Food catalog ----------
@@ -322,7 +335,7 @@ export interface PlanSnapshot {
 }
 
 // ---------- Change review ----------
-export type ChangeEntity = 'member' | 'restriction' | 'need' | 'condition' | 'survey';
+export type ChangeEntity = 'member' | 'restriction' | 'need' | 'condition' | 'survey' | 'food' | 'household' | 'customValue' | 'customField';
 export type ChangeOp = 'create' | 'update' | 'deactivate' | 'reactivate' | 'status' | 'merge' | 'submit';
 export type ChangeStatus = 'pending' | 'approved' | 'denied' | 'acknowledged';
 

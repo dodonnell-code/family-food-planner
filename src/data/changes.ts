@@ -64,13 +64,14 @@ export async function markAllRead(database: PlannerDB = defaultDb) {
 
 export class ChangeConflictError extends Error {}
 
-const TABLE: Record<ChangeEntity, 'members' | 'restrictions' | 'needs' | 'conditions' | 'surveys'> = {
+const TABLE: Record<ChangeEntity, 'members' | 'restrictions' | 'needs' | 'conditions' | 'surveys' | 'foods' | 'households' | 'customValues' | 'customFields'> = {
   member: 'members', restriction: 'restrictions', need: 'needs', condition: 'conditions', survey: 'surveys',
+  food: 'foods', household: 'households', customValue: 'customValues', customField: 'customFields',
 };
 
 /** Approve (keep), acknowledge (non-reversible info), or deny (revert). */
 export async function decideChange(id: ID, decision: 'approve' | 'deny' | 'acknowledge', database: PlannerDB = defaultDb) {
-  await database.transaction('rw', [database.changes, database.members, database.restrictions, database.needs, database.conditions, database.surveys, database.audit], async () => {
+  await database.transaction('rw', [database.changes, database.members, database.restrictions, database.needs, database.conditions, database.surveys, database.foods, database.households, database.customValues, database.customFields, database.audit], async () => {
     const c = await database.changes.get(id);
     if (!c) throw new Error('Change not found');
     if (c.status !== 'pending') throw new Error('This change was already decided');
@@ -86,7 +87,8 @@ export async function decideChange(id: ID, decision: 'approve' | 'deny' | 'ackno
       const current = await table.get(c.entityId);
       if (!current) throw new ChangeConflictError('The record no longer exists.');
       // For a creation, only its active/status matters; otherwise every touched field.
-      const keys = c.op === 'create' ? [c.entity === 'member' ? 'status' : 'active'] : Object.keys({ ...c.before, ...c.after });
+      const createKey = c.entity === 'member' ? 'status' : c.entity === 'customField' ? 'enabled' : c.entity === 'customValue' ? 'valueEnc' : 'active';
+      const keys = c.op === 'create' ? [createKey] : Object.keys({ ...c.before, ...c.after });
       // Conflict check: the touched fields must still hold the "after" values.
       if (!same(pick(current, keys), pick(c.after, keys))) {
         throw new ChangeConflictError('This was changed again afterwards, so it can no longer be undone automatically. Deny or edit the newer change instead.');
@@ -94,12 +96,15 @@ export async function decideChange(id: ID, decision: 'approve' | 'deny' | 'ackno
       let restore: Record<string, unknown>;
       if (c.op === 'create') {
         // Never delete: members are archived, everything else deactivated.
-        restore = c.entity === 'member' ? { status: 'archived', leftAt: ts } : { active: false };
+        restore = c.entity === 'member' ? { status: 'archived', leftAt: ts }
+          : c.entity === 'customField' ? { enabled: false }
+          : c.entity === 'customValue' ? { value: undefined, valueEnc: undefined }
+          : { active: false };
       } else {
         restore = { ...c.before };
       }
       // Dexie removes a property when updated with undefined.
-      await table.update(c.entityId, { ...restore, ...(c.entity === 'member' || c.entity === 'need' ? { updatedAt: ts } : {}) });
+      await table.update(c.entityId, { ...restore, ...(['member', 'need', 'food'].includes(c.entity) ? { updatedAt: ts } : {}) });
       await audit('change.deny', { changeId: c.id, entityId: c.entityId }, `${c.entity}.${c.op}`, database);
     } else {
       await audit(`change.${decision}`, { changeId: c.id, entityId: c.entityId }, `${c.entity}.${c.op}`, database);

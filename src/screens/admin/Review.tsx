@@ -54,19 +54,21 @@ export default function Review() {
 function ChangesInbox() {
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const data = useLiveQuery(async () => {
-    const [changes, members, restrictions, needs, lastSnap, foods] = await Promise.all([
+    const [changes, members, restrictions, needs, lastSnap, foods, customFields] = await Promise.all([
       db.changes.orderBy('timestamp').reverse().toArray(),
       db.members.toArray(),
       db.restrictions.toArray(),
       db.needs.toArray(),
       db.snapshots.orderBy('createdAt').last(),
       db.foods.toArray(),
+      db.customFields.toArray(),
     ]);
     const lookups: Lookups = {
       members: new Map(members.map((m) => [m.id, m])),
       restrictions: new Map(restrictions.map((r) => [r.id, r])),
       needs: new Map(needs.map((n) => [n.id, n])),
       foods: new Map(foods.map((f) => [f.id, f])),
+      customFields: new Map(customFields.map((f) => [f.id, f])),
     };
     return { changes, lookups, lastPlan: lastSnap?.createdAt };
   }, []);
@@ -209,7 +211,10 @@ function Value({ v }: { v: DisplayValue }) {
       (t) => {
         if (!v.json) return setText(t);
         try {
-          setText(Object.entries(JSON.parse(t) as Record<string, string>).map(([k, x]) => `${k}: ${x}`).join(', '));
+          const parsed: unknown = JSON.parse(t);
+          if (Array.isArray(parsed)) setText(parsed.join(', '));
+          else if (parsed && typeof parsed === 'object') setText(Object.entries(parsed).map(([k, x]) => `${k}: ${String(x)}`).join(', '));
+          else setText(typeof parsed === 'boolean' ? (parsed ? 'Yes' : 'No') : String(parsed));
         } catch {
           setText(t);
         }

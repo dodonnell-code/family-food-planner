@@ -68,6 +68,12 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
       title: `${fname(m)}'s guest dates have ended`, detail: 'They are no longer counted for current dates. Mark inactive or update their dates.' });
   }
 
+  const reviewFoods = await database.foods.filter((f) => f.active && f.needsReview).count();
+  if (reviewFoods > 0) {
+    items.push({ id: 'foodreview', severity: 'low', link: '/admin/catalog',
+      title: `${reviewFoods} catalog food${reviewFoods === 1 ? '' : 's'} marked “needs review”`, detail: 'Check their allergens, preparation and package details.' });
+  }
+
   const pending = await database.changes.where('status').equals('pending').toArray();
   if (pending.length > 0) {
     const unread = pending.filter((c) => !c.readAt).length;

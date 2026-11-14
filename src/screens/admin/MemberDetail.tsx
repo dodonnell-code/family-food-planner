@@ -8,6 +8,7 @@ import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
 import { ALLERGENS, Avatar, DIET_TAGS, fmtDate, isPreferenceOnly, MEMBER_COLORS, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
 import NeedsCard from './NeedsCard';
+import CustomFieldsCard from './CustomFieldsCard';
 import type { AgeBand, Member, MemberRestriction, PlanningProfile, Presence, RestrictionType } from '../../domain/types';
 import { useStartSurvey } from './AdminLayout';
 
@@ -45,6 +46,7 @@ function MemberEditor({ member }: { member: Member }) {
       <ProfileCard member={member} onSaved={() => flash('Profile saved')} />
       <RestrictionsCard member={member} />
       <NeedsCard member={member} />
+      <CustomFieldsCard member={member} />
       <PrivateNotesCard member={member} onSaved={() => flash('Private note saved (encrypted)')} />
       <SurveyHistoryCard memberId={member.id} />
       <StatusCard member={member} onMerged={() => nav('/admin/members')} />
