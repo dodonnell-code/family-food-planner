@@ -143,7 +143,7 @@ describe('respondent suggestions', () => {
       { id: 'a', kind: 'remove-restriction', restrictionId: peanut.id, reason: 'outgrew it' },
       { id: 'b', kind: 'add-restriction', restrictionType: 'cannot-eat', text: 'mushrooms, olives' },
       { id: 'c', kind: 'preferred-name', value: 'Z' },
-    ], 'tuna');
+    ], 'canned-fish');
 
     const sugs = (await pending()).filter((c) => c.source === 'respondent');
     expect(sugs).toHaveLength(5); // remove peanut, 2 foods, name, can't-eat tuna
@@ -154,7 +154,7 @@ describe('respondent suggestions', () => {
     expect((await db.restrictions.get(peanut.id))?.active).toBe(true); // declined
     expect((await db.members.get(m.id))?.preferredName).toBe('Z');
     const subjects = (await db.restrictions.where('memberId').equals(m.id).filter((r) => r.active).toArray()).map((r) => r.subject).sort();
-    expect(subjects).toEqual(['food:Tuna (cans or pouches)', 'food:mushrooms', 'food:olives', 'peanut']);
+    expect(subjects).toEqual(['food:Canned fish', 'food:mushrooms', 'food:olives', 'peanut']);
   });
 });
 
@@ -164,22 +164,22 @@ describe('survey refusals and never-stock answers', () => {
     const { surveyRefusals } = await import('../domain/preferences');
     const m = await addMember({ displayName: 'Sam' }, db);
     const s = await startOrResumeSurvey(m.id, db);
-    await saveAnswer(s.id, 'sardines-canned', 1, {}, db);
+    await saveAnswer(s.id, 'canned-fish', 1, {}, db);
     await saveAnswer(s.id, 'split-peas-dry', 1, {}, db);
     await saveAnswer(s.id, 'white-rice', 5, {}, db);
     await updateSurveyProgress(s.id, { openResponses: { neverStock: 'olives, spam.' } }, db);
     await submitSurvey(s.id, db);
 
     const submit = (await db.changes.toArray()).find((c) => c.op === 'submit')!;
-    expect(submit.after?.refuses).toEqual(['Canned sardines', 'Dry split peas']);
+    expect(submit.after?.refuses).toEqual(['Canned fish', 'Dry split peas']);
     const neverSugs = (await pending()).filter((c) => c.after?.type === 'dislike').map((c) => c.after?.subject).sort();
     expect(neverSugs).toEqual(['food:olives', 'food:spam']);
 
-    expect((await surveyRefusals(m.id, db)).active.map((f) => f.id)).toEqual(['sardines-canned', 'split-peas-dry']);
-    await setRefusalIgnored(s.id, 'sardines-canned', true, db);
+    expect((await surveyRefusals(m.id, db)).active.map((f) => f.id)).toEqual(['canned-fish', 'split-peas-dry']);
+    await setRefusalIgnored(s.id, 'canned-fish', true, db);
     let r = await surveyRefusals(m.id, db);
     expect(r.active.map((f) => f.id)).toEqual(['split-peas-dry']);
-    expect(r.ignored.map((f) => f.id)).toEqual(['sardines-canned']);
+    expect(r.ignored.map((f) => f.id)).toEqual(['canned-fish']);
 
     await decideChange((await latest()).id, 'deny', db); // undo the override
     r = await surveyRefusals(m.id, db);

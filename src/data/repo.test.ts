@@ -57,8 +57,8 @@ describe('acceptance tests (scope §12)', () => {
   it('#1 adding Charlie later does not alter earlier surveys', async () => {
     const alice = await addMember({ displayName: 'Alice' }, db);
     const bob = await addMember({ displayName: 'Bob' }, db);
-    const sa = await completeSurvey(alice.id, { 'tuna': 5 });
-    await completeSurvey(bob.id, { 'tuna': 2 });
+    const sa = await completeSurvey(alice.id, { 'canned-fish': 5 });
+    await completeSurvey(bob.id, { 'canned-fish': 2 });
     const before = await answersFor(sa.id, db);
     const charlie = await addMember({ displayName: 'Charlie' }, db);
     expect((await db.members.toArray()).filter((m) => isOnRoster(m)).map((m) => m.id)).toContain(charlie.id);
@@ -104,7 +104,7 @@ describe('acceptance tests (scope §12)', () => {
 
   it('#7 renaming a member keeps responses tied to the stable ID', async () => {
     const m = await addMember({ displayName: 'Alice' }, db);
-    const s = await completeSurvey(m.id, { 'tuna': 5 });
+    const s = await completeSurvey(m.id, { 'canned-fish': 5 });
     await updateMember(m.id, { displayName: 'Alicia' }, db);
     expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(s.id);
   });
@@ -113,9 +113,9 @@ describe('acceptance tests (scope §12)', () => {
 describe('survey versioning', () => {
   it('locks submitted surveys and keeps previous versions as superseded', async () => {
     const m = await addMember({ displayName: 'Eve' }, db);
-    const v1 = await completeSurvey(m.id, { 'tuna': 3 });
-    await expect(saveAnswer(v1.id, 'tuna', 5, {}, db)).rejects.toThrow(/locked/);
-    const v2 = await completeSurvey(m.id, { 'tuna': 5 });
+    const v1 = await completeSurvey(m.id, { 'canned-fish': 3 });
+    await expect(saveAnswer(v1.id, 'canned-fish', 5, {}, db)).rejects.toThrow(/locked/);
+    const v2 = await completeSurvey(m.id, { 'canned-fish': 5 });
     expect(v2.version).toBe(2);
     expect((await db.surveys.get(v1.id))?.status).toBe('superseded');
     expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(v2.id);
@@ -133,13 +133,13 @@ describe('catalog upgrade', () => {
   it('refreshes unedited seed entries with carbs but never overwrites admin edits', async () => {
     // Simulate an older install: carbs missing, one entry edited by admin, catalog version 1.
     await db.foods.update('white-rice', { nutrition: { servingDesc: '1/4 cup dry', caloriesPerServing: 160 } });
-    await db.foods.update('tuna', { name: 'Our tuna', revision: 2, nutrition: { servingDesc: '2 oz', caloriesPerServing: 60 } });
+    await db.foods.update('canned-fish', { name: 'Our tuna', revision: 2, nutrition: { servingDesc: '2 oz', caloriesPerServing: 60 } });
     await db.foods.delete('glucose-tabs');
     await db.meta.put({ key: 'catalogVersion', value: 1 });
 
     await ensureInitialized(db);
     expect((await db.foods.get('white-rice'))?.nutrition.carbsG).toBe(36);
-    expect((await db.foods.get('tuna'))?.name).toBe('Our tuna');
+    expect((await db.foods.get('canned-fish'))?.name).toBe('Our tuna');
     expect((await db.foods.get('glucose-tabs'))?.tags).toContain('rapid-carb');
   });
   it('retires untouched freeze-dried meal entries replaced by generic cans, but keeps admin-edited ones', async () => {
@@ -258,7 +258,7 @@ describe('generic foods with kinds', () => {
 
   it('suggests a retake once after the upgrade that added kinds', async () => {
     const m = await addMember({ displayName: 'Dan' }, db);
-    await completeSurvey(m.id, { tuna: 4 });
+    await completeSurvey(m.id, { 'canned-fish': 4 });
     await db.meta.put({ key: 'catalogVersion', value: 12 });
     await db.meta.delete('kinds13');
     await ensureInitialized(db);
@@ -281,7 +281,7 @@ describe('admin survey and restriction controls', () => {
 
   it('dismisses a retake suggestion, and resets a survey so its answers stop counting', async () => {
     const m = await addMember({ displayName: 'Dan' }, db);
-    await completeSurvey(m.id, { tuna: 5 });
+    await completeSurvey(m.id, { 'canned-fish': 5 });
     await addRestriction({ memberId: m.id, type: 'allergy', subject: 'egg' }, db);
     expect((await latestSubmittedSurvey(m.id, db))?.needsRefresh).toBe(true);
     await dismissSurveyRefresh(m.id, db);
@@ -293,7 +293,7 @@ describe('admin survey and restriction controls', () => {
     expect(input!.members[0].ratings).toEqual({});
     expect(input!.members[0].restrictions.map((x) => x.subject)).toEqual(['egg']);
     // A new survey can be taken afterwards.
-    const v = await completeSurvey(m.id, { tuna: 3 });
+    const v = await completeSurvey(m.id, { 'canned-fish': 3 });
     expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(v.id);
   });
 });

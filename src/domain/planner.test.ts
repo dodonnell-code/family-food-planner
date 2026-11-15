@@ -54,12 +54,11 @@ describe('planner: preferences', () => {
   });
 
   it('a dislike pulls a food below a safe alternative instead of being outvoted', () => {
-    const ratings = all5(['tuna', 'canned-meat']);
-    const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings }));
-    const picky = member('d', { ratings: { 'canned-meat': 4 }, restrictions: [restr('d', 'food:tuna', { type: 'dislike' })] });
-    const tuna = scoreFood(food('tuna'), [...fans, picky], 'medium', 14).score;
-    const chicken = scoreFood(food('canned-meat'), [...fans, picky], 'medium', 14).score;
-    expect(chicken).toBeGreaterThan(tuna);
+    const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings: all5(['peanut-butter', 'canned-meat']) }));
+    const picky = member('d', { ratings: { 'canned-meat': 4 }, restrictions: [restr('d', 'food:peanut', { type: 'dislike' })] });
+    const pb = scoreFood(food('peanut-butter'), [...fans, picky], 'medium', 14).score;
+    const meat = scoreFood(food('canned-meat'), [...fans, picky], 'medium', 14).score;
+    expect(meat).toBeGreaterThan(pb);
   });
 
   it('“avoid when possible” intolerances keep the food eligible but flag it', () => {
@@ -363,7 +362,7 @@ describe('planner: variety, favorites and a balanced diet', () => {
   const okWithEverything = (fav: string[]) => Object.fromEntries(foods.map((f) => [f.id, (fav.includes(f.id) ? 5 : 3) as RatingCode]));
 
   it('puts family favorites in every plan, including the 3-day one', () => {
-    const fam = five(okWithEverything(['mac-cheese-cup', 'canned-fruit', 'tuna']));
+    const fam = five(okWithEverything(['mac-cheese-cup', 'canned-fruit', 'canned-fish']));
     for (const tier of ['short', 'medium', 'long'] as Tier[]) {
       const p = buildPlan(input(fam, tier, { scenario: 'limited-cook' }));
       for (const id of ['mac-cheese-cup', 'canned-fruit']) {
@@ -469,9 +468,9 @@ describe('planner: calorie goal and foods not chosen', () => {
   });
 
   it('gives "not liked" as the reason when someone refuses a food', () => {
-    const p = buildPlan(input(fam().map((m) => ({ ...m, ratings: { 'sardines-canned': 1 as RatingCode } })), 'medium'));
-    expect(p.items.some((i) => i.foodId === 'sardines-canned')).toBe(false);
-    expect(p.notChosen!.find((x) => x.foodId === 'sardines-canned')?.reason).toMatch(/like it|rated it low/);
+    const p = buildPlan(input(fam().map((m) => ({ ...m, ratings: { 'canned-fish': 1 as RatingCode } })), 'medium'));
+    expect(p.items.some((i) => i.foodId === 'canned-fish')).toBe(false);
+    expect(p.notChosen!.find((x) => x.foodId === 'canned-fish')?.reason).toMatch(/like it|rated it low/);
   });
 });
 

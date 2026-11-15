@@ -39,10 +39,10 @@ describe('food catalog', () => {
   });
 
   it('retires without deleting, and deny restores it', async () => {
-    await setFoodActive('tuna', false, db);
-    expect((await db.foods.get('tuna'))?.active).toBe(false);
+    await setFoodActive('canned-fish', false, db);
+    expect((await db.foods.get('canned-fish'))?.active).toBe(false);
     await decideChange((await latest()).id, 'deny', db);
-    expect((await db.foods.get('tuna'))?.active).toBe(true);
+    expect((await db.foods.get('canned-fish'))?.active).toBe(true);
   });
 });
 

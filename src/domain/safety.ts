@@ -53,7 +53,9 @@ export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): Sa
   const safe = kinds.filter((x) => !x.result.blocked.length);
   if (!safe.length) return { ...base, blocked: [...new Set(kinds.flatMap((x) => x.result.blocked))] };
   const skip = kinds.filter((x) => x.result.blocked.length).map((x) => x.kind.name);
-  return { ...base, blocked: [], warnings: skip.length ? [...base.warnings, `Only some kinds are safe (skip: ${skip.join(', ')})`] : base.warnings };
+  // A dislike of one kind (e.g. tuna) doesn't count against the whole food unless every safe kind is disliked.
+  const disliked = safe.every((x) => x.result.disliked.length) ? [...new Set(safe.flatMap((x) => x.result.disliked))] : [];
+  return { ...base, blocked: [], disliked, warnings: skip.length ? [...base.warnings, `Only some kinds are safe (skip: ${skip.join(', ')})`] : base.warnings };
 }
 
 function checkOne(food: FoodItem, restrictions: MemberRestriction[]): SafetyResult {

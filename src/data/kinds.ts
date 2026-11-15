@@ -7,6 +7,7 @@ import type { FoodKind } from '../domain/types';
 const k = (id: string, name: string, icon: string, extra: Omit<FoodKind, 'id' | 'name' | 'icon'> = {}): FoodKind => ({ id, name, icon, ...extra });
 const VEG = ['vegetarian'];
 const VEGAN = ['vegan', 'vegetarian'];
+const FISH = ['fish', 'high-protein'];
 
 export const SEED_KINDS: Record<string, FoodKind[]> = {
   'canned-meat': [
@@ -67,10 +68,15 @@ export const SEED_KINDS: Record<string, FoodKind[]> = {
     k('chickpeas', 'Chickpeas (garbanzo)', '🟡'), k('white', 'White / great northern', '⚪'), k('lentils', 'Lentils', '🟠'),
     k('baked', 'Baked beans', '🍯', { tags: VEG }), k('pork-beans', 'Pork & beans', '🐖', { tags: ['pork'] }),
   ],
-  tuna: [
-    k('light-water', 'Chunk light, in water', '🐟'), k('albacore', 'Albacore (white)', '🐟'), k('in-oil', 'Packed in oil', '🫒', { mayContain: ['soy'] }),
-    k('flavored', 'Flavored pouches (lemon pepper, etc.)', '🍋', { mayContain: ['soy', 'milk'] }),
-    k('salad-kit', 'Tuna salad kits with crackers', '🥪', { contains: ['egg', 'wheat', 'gluten', 'soy'] }),
+  'canned-fish': [
+    k('tuna-light', 'Tuna, chunk light', '🐟', { contains: ['fish'], tags: FISH }),
+    k('tuna-albacore', 'Tuna, albacore (white)', '🐟', { contains: ['fish'], tags: FISH }),
+    k('tuna-flavored', 'Flavored tuna pouches', '🍋', { contains: ['fish'], mayContain: ['soy', 'milk'], tags: FISH }),
+    k('salmon', 'Salmon', '🍣', { contains: ['fish'], tags: FISH }),
+    k('sardines', 'Sardines', '🐟', { contains: ['fish'], tags: FISH }),
+    k('mackerel', 'Mackerel', '🐟', { contains: ['fish'], tags: FISH }),
+    k('herring', 'Kippers / herring', '🐟', { contains: ['fish'], tags: FISH }),
+    k('smoked-shellfish', 'Smoked oysters or clams', '🦪', { contains: ['shellfish'], tags: ['high-protein'] }),
   ],
   bars: [
     k('granola', 'Granola bars', '🌾', { contains: ['wheat', 'gluten'], mayContain: ['peanut', 'tree-nut', 'soy'] }),
