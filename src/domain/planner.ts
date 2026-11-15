@@ -65,6 +65,24 @@ export interface PlanInput {
   base?: PlanResult;
 }
 
+export interface WaterTreatment {
+  /** First day that relies on treated water. */
+  fromDay: number;
+  days: number;
+  gallonsPerDay: number;
+  gallons: number;
+  /** Unscented bleach to treat it all, doubled for cloudy water (fl oz). */
+  bleachOz: number;
+}
+
+/** Supplies to make water safe once stored water runs out (CDC: filter, then disinfect, or boil). */
+export const WATER_TREATMENT_EQUIPMENT = [
+  'Water filter (gravity or pump; removes bacteria and protozoa)',
+  'Unscented household bleach (6–8.25%) and a medicine dropper',
+  'Food-grade buckets or jugs to collect and treat water',
+  'Coffee filters or clean cloth to pre-filter cloudy water',
+];
+
 export interface PlanOverride {
   foodId: ID;
   name: string;
@@ -169,7 +187,8 @@ export interface PlanResult {
   overrides?: PlanOverride[];
   /** The smaller plan this one builds on (its food is included here). */
   base?: { tier: Tier; days: number; calories: number };
-  water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number };
+  /** Stored water covers the first `drinkingDays` days (drinking + food prep). After that, `treatment` says how much water to make safe. */
+  water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number; treatment?: WaterTreatment };
   fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
   equipment: EquipmentNeed[];
   storage: { knownLiters: number; unknownItems: number; limitLiters?: number };
@@ -609,11 +628,22 @@ export function buildPlan(input: PlanInput): PlanResult {
   for (const c of coverage) if (c.mealOptions < defaults.minDailyMealOptions && members.length) warnings.push(`${c.name} has fewer main-dish options than your target of ${defaults.minDailyMealOptions}.`);
 
   // ---- Water, fuel, equipment, storage, cost ----
+  // Stored water (drinking + food prep) covers the first days, up to the reserve setting. Storing
+  // much more isn't practical for most homes, so after that the plan is to make water safe.
   const drinkingDays = Math.min(days, defaults.waterReserveDays);
-  const drinkingGallons = round1(people * defaults.waterGallonsPerPersonPerDay * drinkingDays);
-  const prepGallons = round1(items.reduce((s, i) => s + i.prepWaterGallons, 0) + reservedPrepWater(reserved, foods));
-  const fullHorizonGallons = round1(people * defaults.waterGallonsPerPersonPerDay * days);
-  if (days > drinkingDays && people) warnings.push(`Drinking water covers ${drinkingDays} days (your reserve setting). Covering all ${days} days would take about ${fullHorizonGallons} gallons, which needs a storage and treatment plan.`);
+  const drinkPerDay = people * defaults.waterGallonsPerPersonPerDay;
+  const prepPerDay = days ? (items.reduce((s, i) => s + i.prepWaterGallons, 0) + reservedPrepWater(reserved, foods)) / days : 0;
+  const drinkingGallons = round1(drinkPerDay * drinkingDays);
+  const prepGallons = round1(prepPerDay * drinkingDays);
+  const fullHorizonGallons = round1(drinkPerDay * days);
+  let treatment: WaterTreatment | undefined;
+  if (days > drinkingDays && people) {
+    const tDays = days - drinkingDays;
+    const gallons = round1((drinkPerDay + prepPerDay) * tDays);
+    // CDC: 8 drops (~0.4 mL) of 6% bleach per gallon; doubled for cloudy water.
+    treatment = { fromDay: drinkingDays + 1, days: tDays, gallonsPerDay: round1(drinkPerDay + prepPerDay), gallons, bleachOz: Math.max(1, Math.ceil((gallons * 0.8) / 29.57)) };
+    warnings.push(`Stored water covers the first ${drinkingDays} days. From day ${drinkingDays + 1}, you will need to make about ${treatment.gallonsPerDay} gallons a day safe (${gallons} gallons in all): have a water source, a filter and unscented bleach ready (listed under Equipment).`);
+  }
 
   const fuelItems = items.filter((i) => i.needsFuel).map((i) => {
     const f = foods.find((x) => x.id === i.foodId)!;
@@ -633,6 +663,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const equipment: EquipmentNeed[] = [
     ...[...needBy].map(([item, forFoods]) => ({ item, foods: forFoods })).sort((a, z) => z.foods.length - a.foods.length || a.item.localeCompare(z.item)),
     ...BASIC_EQUIPMENT.map((item) => ({ item, foods: [] })),
+    ...(treatment ? WATER_TREATMENT_EQUIPMENT.map((item) => ({ item, foods: [`Water from day ${treatment!.fromDay}`] })) : []),
   ];
 
   const knownLiters = round1(items.reduce((s, i) => s + (i.volumeL ?? 0), 0));
@@ -652,7 +683,7 @@ export function buildPlan(input: PlanInput): PlanResult {
     engineVersion: ENGINE_VERSION, tier, scenario, days, people, dailyCaloriesTotal, targetCalories, plannedCalories,
     items, reserved, excluded, coverage, overrides,
     base: input.base && baseInfo ? { ...baseInfo, calories: input.base.plannedCalories } : undefined,
-    water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons },
+    water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons, treatment },
     fuel: { burnerMinutes, items: fuelItems },
     equipment,
     storage: { knownLiters, unknownItems, limitLiters: defaults.storageSpaceLiters },

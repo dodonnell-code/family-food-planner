@@ -64,7 +64,7 @@ describe('household settings', () => {
     await db.households.put({ ...hh, planningDefaults: old as typeof hh.planningDefaults });
     const fixed = await ensureInitialized(db);
     expect(fixed.planningDefaults.mealsPerDay).toBe(3);
-    expect(fixed.planningDefaults.waterReserveDays).toBe(3);
+    expect(fixed.planningDefaults.waterReserveDays).toBe(14);
   });
 });
 

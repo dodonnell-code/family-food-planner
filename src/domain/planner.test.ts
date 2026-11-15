@@ -90,7 +90,7 @@ describe('planner: quantities, water and needs', () => {
     }
     expect(plan.water.drinkingDays).toBe(Math.min(days, DEFAULT_PLANNING.waterReserveDays));
     expect(plan.water.drinkingGallons).toBeCloseTo(3 * plan.water.drinkingDays, 5);
-    if (days > plan.water.drinkingDays) expect(plan.warnings.join()).toContain('Drinking water covers');
+    if (days > plan.water.drinkingDays) expect(plan.warnings.join()).toContain('Stored water covers the first');
   });
 
   it('reserves fast-acting carbs for the person who needs them, safely', () => {
@@ -321,5 +321,26 @@ describe('planner: preparedness staples', () => {
   it('no-cook plans don’t force staples that need cooking', () => {
     const p = buildPlan(input(fam(), 'medium', { scenario: 'no-cook' }));
     expect(p.items.some((i) => i.foodId === 'white-rice' || i.foodId === 'potato-flakes')).toBe(false);
+  });
+});
+
+describe('planner: water after the stored days', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+  it('stores water for the reserve days, then plans to make the rest safe with a filter and bleach', () => {
+    const p = buildPlan(input(fam(), 'long', { defaults: { ...DEFAULT_PLANNING, waterReserveDays: 14 } }));
+    expect(p.water.drinkingDays).toBe(14);
+    expect(p.water.drinkingGallons).toBe(42);
+    const t = p.water.treatment!;
+    expect(t).toMatchObject({ fromDay: 15, days: 76 });
+    expect(t.gallons).toBeGreaterThanOrEqual(76 * 3);
+    expect(t.bleachOz).toBeGreaterThan(0);
+    expect(p.equipment.some((e) => e.item.startsWith('Water filter'))).toBe(true);
+    expect(p.equipment.some((e) => e.item.startsWith('Unscented household bleach'))).toBe(true);
+  });
+
+  it('needs no treatment when stored water covers the whole plan', () => {
+    const p = buildPlan(input(fam(), 'medium', { defaults: { ...DEFAULT_PLANNING, waterReserveDays: 14 } }));
+    expect(p.water.treatment).toBeUndefined();
+    expect(p.equipment.some((e) => e.item.startsWith('Water filter'))).toBe(false);
   });
 });

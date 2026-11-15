@@ -264,6 +264,20 @@ function Coverage({ r }: { r: PlanResult }) {
   );
 }
 
+export function WaterTreatmentNote({ t }: { t: NonNullable<PlanResult['water']['treatment']> }) {
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <div><strong>Make {num(t.gallons)} gal safe</strong> from day {t.fromDay} (about {num(t.gallonsPerDay)} gal a day)</div>
+      <ol className="small" style={{ margin: 0, paddingLeft: 20 }}>
+        <li>Collect from a source you’ve picked ahead of time (rain barrel, well, spring, stream or lake). Not from pools, floodwater or anything near chemicals or fuel.</li>
+        <li>Let cloudy water settle, then pour it through a coffee filter or clean cloth.</li>
+        <li>Run it through the water filter, then disinfect: 8 drops of unscented 6% bleach per gallon (6 drops if 8.25%), double if still cloudy. Stir and wait 30 minutes. Or boil for 1 minute (3 minutes above 6,500 ft).</li>
+      </ol>
+      <div className="small muted">Bleach for all of it: about {t.bleachOz} fl oz (doubled for cloudy water). Bleach weakens over time, so replace it every 6–12 months. Source: CDC, “Making Water Safe in an Emergency”.</div>
+    </div>
+  );
+}
+
 function WaterFuel({ r }: { r: PlanResult }) {
   return (
     <section className="card stack">
@@ -271,10 +285,9 @@ function WaterFuel({ r }: { r: PlanResult }) {
       <div className="grid">
         <div className="stack" style={{ gap: 4 }}>
           <h3 style={{ margin: 0 }}>Water</h3>
-          <div>{num(r.water.drinkingGallons)} gal drinking water ({r.water.drinkingDays} days)</div>
-          <div>{num(r.water.prepGallons)} gal for preparing food</div>
-          <div><strong>{num(r.water.totalGallons)} gal total</strong></div>
-          {r.days > r.water.drinkingDays && <div className="small muted">All {r.days} days of drinking water would be about {num(r.water.fullHorizonGallons)} gal.</div>}
+          <div><strong>Store {num(r.water.totalGallons)} gal</strong> for the first {r.water.drinkingDays} days</div>
+          <div className="small muted">{num(r.water.drinkingGallons)} gal drinking + {num(r.water.prepGallons)} gal for preparing food</div>
+          {r.water.treatment && <WaterTreatmentNote t={r.water.treatment} />}
           <div className="small muted">CDC minimum: 1 gallon per person per day. Hot climates, illness, nursing and pets need more.</div>
         </div>
         <div className="stack" style={{ gap: 4 }}>

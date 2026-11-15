@@ -83,11 +83,14 @@ function PlanningForm({ hh }: { hh: Household }) {
         <p className="small muted" style={{ margin: 0 }}>The CDC minimum is 1 gallon per person per day. Water for preparing food is calculated separately, so it isn’t double-counted.</p>
         <div className="grid">
           {field('waterGallonsPerPersonPerDay', 'Drinking water per person per day (gallons)', { min: 0.5, step: 0.25 })}
-          <label>Drinking-water reserve
+          <label>Store water for
             <select value={p.waterReserveDays} onChange={(e) => setP((x) => ({ ...x, waterReserveDays: e.target.value }))}>
               <option value="3">3 days (minimum)</option>
+              <option value="7">7 days</option>
               <option value="14">14 days</option>
+              <option value="30">30 days</option>
             </select>
+            <span className="small muted" style={{ fontWeight: 400 }}>Stored water covers drinking and cooking for these days. After that, plans list what you need to make water safe (filter, bleach, containers).</span>
           </label>
         </div>
       </section>

@@ -23,7 +23,7 @@ export const DEFAULT_PLANNING = {
   minDailyMealOptions: 3,
   defaultDailyCalories: 2000,
   mealsPerDay: 3,
-  waterReserveDays: 3,
+  waterReserveDays: 14,
   longTermCannedMaxPercent: 20,
 } as const;
 

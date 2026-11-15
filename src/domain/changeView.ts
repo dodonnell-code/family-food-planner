@@ -113,7 +113,7 @@ const LABELS: Record<string, string> = {
   'nutrition.servingDesc': 'Serving size', 'nutrition.caloriesPerServing': 'Calories per serving', 'nutrition.proteinG': 'Protein (g)', 'nutrition.carbsG': 'Carbs (g)',
   'package.description': 'Package', 'package.servingsPerPackage': 'Servings per package', 'package.volumeL': 'Package volume (L)',
   'planningDefaults.shortDays': 'Short-term plan (days)', 'planningDefaults.mediumDays': 'Medium-term plan (days)', 'planningDefaults.longDays': 'Long-term plan (days)',
-  'planningDefaults.waterGallonsPerPersonPerDay': 'Drinking water per person per day (gal)', 'planningDefaults.waterReserveDays': 'Water reserve (days)',
+  'planningDefaults.waterGallonsPerPersonPerDay': 'Drinking water per person per day (gal)', 'planningDefaults.waterReserveDays': 'Store water for (days)',
   'planningDefaults.minDailyMealOptions': 'Minimum meal options per person', 'planningDefaults.defaultDailyCalories': 'Default daily calories',
   'planningDefaults.mealsPerDay': 'Group meals per day', 'planningDefaults.storageSpaceLiters': 'Storage space (L)', 'planningDefaults.budget': 'Budget',
   'settings.autoLockMinutes': 'Auto-lock (minutes)', 'settings.backupReminderDays': 'Backup reminder (days)', 'settings.lastBackupAt': 'Last backup',
