@@ -43,6 +43,8 @@ export interface Household {
   planOverrides?: Partial<Record<Tier, ID[]>>;
   /** Admin swaps for every plan: food → replacement food, or '' to just leave it out. */
   planSubstitutions?: Record<ID, ID | ''>;
+  /** Family requests (survey "Foods we should add" / "Comfort meals") the admin has dealt with. */
+  requestsDone?: string[];
 }
 
 // ---------- Members ----------

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { db } from '../../data/db';
 import { blankFood, saveFood, setFoodActive } from '../../data/adminRepo';
 import { implicitEquipment } from '../../domain/equipment';
@@ -24,7 +24,9 @@ const ROLES: { v: FoodItem['mealRole']; l: string }[] = [
 export default function FoodEditor() {
   const { id } = useParams<{ id: string }>();
   const isNew = id === 'new';
-  const food = useLiveQuery(async () => (isNew ? blankFood() : ((await db.foods.get(id!)) ?? null)), [id]);
+  const [params] = useSearchParams();
+  const prefill = params.get('name') ?? '';
+  const food = useLiveQuery(async () => (isNew ? { ...blankFood(), name: prefill } : ((await db.foods.get(id!)) ?? null)), [id, prefill]);
   if (food === undefined) return <p className="muted">Loading…</p>;
   if (!food) return <p>Food not found. <Link to="/admin/catalog">Back to catalog</Link></p>;
   return <Editor key={food.id || 'new'} initial={food} isNew={isNew} />;

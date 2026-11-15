@@ -7,6 +7,8 @@ import { useStartSurvey } from './AdminLayout';
 import { AttentionList } from './Review';
 import { computeAttention } from '../../domain/attention';
 import { EXPIRING_SOON_DAYS, stockStatus } from '../../domain/inventory';
+import { loadFamilyRequests } from '../../data/requestsRepo';
+import { REQUEST_LABEL } from '../../domain/requests';
 
 export default function AdminHome() {
   const [params] = useSearchParams();
@@ -34,6 +36,7 @@ export default function AdminHome() {
       )}
 
       <UseSoon />
+      <RequestsCard />
 
       <section className="card stack" aria-labelledby="next-h" style={picking ? { outline: '3px solid var(--accent)' } : undefined}>
         <h2 id="next-h">{picking ? 'Who is taking the survey?' : 'Start the next survey'}</h2>
@@ -99,6 +102,19 @@ function UseSoon() {
         ))}
       </ul>
       {data.due.length > 6 && <p className="small muted" style={{ margin: 0 }}>And {data.due.length - 6} more.</p>}
+    </section>
+  );
+}
+
+function RequestsCard() {
+  const data = useLiveQuery(() => loadFamilyRequests(), []);
+  if (!data || data.open.length === 0) return null;
+  return (
+    <section className="card stack">
+      <div className="spread"><h2 style={{ margin: 0 }}>Family requests <span className="badge warn">{data.open.length}</span></h2><Link to="/admin/plan">Open on Plan</Link></div>
+      <ul style={{ margin: 0, paddingLeft: 20 }}>
+        {data.open.slice(0, 4).map((q) => <li key={q.key}><strong>{q.memberName}</strong> · {REQUEST_LABEL[q.kind]}: “{q.text}”</li>)}
+      </ul>
     </section>
   );
 }

@@ -5,6 +5,7 @@ import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { allergenLine, fmtDate } from '../../app/ui';
 import { setPlanOverride, setPlanSubstitution } from '../../data/adminRepo';
+import { FamilyRequests } from './Requests';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
 import { ADMIN_REMOVED, BUCKET_LABEL, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
 import type { FoodItem, Scenario, Tier } from '../../domain/types';
@@ -99,6 +100,7 @@ export default function Plan() {
           {plan.result.reserved.length > 0 && <Reserved r={plan.result} names={names} />}
           <Coverage r={plan.result} />
           <WaterFuel r={plan.result} />
+          <FamilyRequests r={plan.result} foods={plan.input.foods} names={names} />
           <Additions r={plan.result} tier={tier} foods={plan.input.foods} names={names} subs={hh?.planSubstitutions ?? {}} />
           <Excluded r={plan.result} names={names} tier={tier} />
           <p className="small muted">
