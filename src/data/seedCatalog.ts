@@ -1,16 +1,17 @@
 // Seed catalog — scope §6. Generic entries only; every entry has verifyLabel=true because
 // a generic name never proves allergen-free status (catalog quality rule). Shelf-life
 // values are guidance with assumptions, not guarantees. Prefer the actual package label.
-import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../domain/types';
+import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } from '../domain/types';
 
 // v2: adds approximate carbs per serving and rapid-carb tags.
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v8: baking supplies & seasonings (new 'pantry' group, incl. salt; cooking oil moves there).
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 7;
+export const CATALOG_VERSION = 8;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice'];
@@ -26,7 +27,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, sunbutter: 7, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -82,6 +83,9 @@ interface Seed {
   notes?: string;
   /** Extra equipment beyond what the prep method implies. */
   equip?: string[];
+  /** Pantry items: servings used per person per day, and the smallest plan that includes it. */
+  use?: number;
+  from?: Tier;
 }
 
 const S: Seed[] = [
@@ -163,7 +167,7 @@ const S: Seed[] = [
   { id: 'trail-mix', name: 'Trail mix', category: 'fat-snack', form: 'pouch', tags: ['vegetarian', 'kid-friendly'], contains: ['peanut', 'tree-nut'], mayContain: ['milk', 'soy'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '1/4 cup', kcal: 170, protein: 5, pkg: '26 oz bag', servings: 20, volL: 1, cost: 2, rot: 2, role: 'snack' },
   { id: 'granola-bars', name: 'Granola / cereal bars', category: 'fat-snack', form: 'box', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], mayContain: ['peanut', 'tree-nut'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 bar', kcal: 190, protein: 4, pkg: '12-count box', servings: 12, volL: 0.6, cost: 1, rot: 2, role: 'snack' },
   { id: 'protein-bars', name: 'Protein bars', category: 'fat-snack', form: 'box', tags: ['high-protein'], contains: ['milk', 'soy'], mayContain: ['peanut', 'tree-nut'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 bar', kcal: 220, protein: 20, pkg: '12-count box', servings: 12, volL: 0.6, cost: 3, rot: 2, role: 'snack' },
-  { id: 'cooking-oil', name: 'Cooking oil', category: 'fat-snack', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'heat', sl: SRC.highFat, serving: '1 tbsp', kcal: 120, pkg: '48 oz bottle', servings: 96, volL: 1.5, cost: 1, rot: 3, role: 'staple', notes: 'Rotate — oils go rancid; needed for long-term calorie density' },
+  { id: 'cooking-oil', name: 'Cooking oil', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'heat', sl: SRC.highFat, serving: '1 tbsp', kcal: 120, pkg: '48 oz bottle', servings: 96, volL: 1.5, cost: 1, rot: 3, role: 'staple', use: 0.5, from: 'short', notes: 'Rotate — oils go rancid; needed for long-term calorie density' },
   { id: 'hard-candy', name: 'Hard candy', category: 'fat-snack', form: 'pouch', tags: ['vegan', 'rapid-carb'], prep: 'ready-to-eat', sl: { ...SRC.shortDry, min: 12, max: 24 }, serving: '4 pieces', kcal: 60, pkg: '1 lb bag', servings: 25, volL: 0.6, cost: 1, role: 'snack', notes: 'Fast-acting carb source; carb content varies by brand' },
   { id: 'glucose-tabs', name: 'Glucose tablets', category: 'fat-snack', form: 'box', tags: ['vegan', 'rapid-carb', 'gluten-free'], prep: 'ready-to-eat', sl: { ...SRC.shortDry, min: 12, max: 24 }, serving: '4 tablets', kcal: 60, pkg: '50-count bottle', servings: 12, volL: 0.2, cost: 2, role: 'snack', notes: 'Labeled grams of carbs per tablet — use the package label for exact amounts' },
   { id: 'glucose-gel', name: 'Glucose gel pouches', category: 'fat-snack', form: 'pouch', tags: ['vegan', 'rapid-carb', 'gluten-free'], prep: 'ready-to-eat', sl: { ...SRC.shortDry, min: 12, max: 24 }, serving: '1 pouch', kcal: 60, pkg: '10-pack', servings: 10, volL: 0.2, cost: 3, role: 'snack', notes: 'Labeled grams of carbs per pouch — use the package label' },
@@ -176,6 +180,26 @@ const S: Seed[] = [
   { id: 'electrolyte-mix', name: 'Electrolyte drink mix', category: 'beverage', form: 'packet', tags: ['vegan'], prep: 'add-cold-water', water: 2, sl: { ...SRC.shortDry, min: 18, max: 36 }, serving: '1 packet', kcal: 40, pkg: '16-count', servings: 16, volL: 0.2, cost: 2, role: 'drink' },
   { id: 'coffee-tea', name: 'Instant coffee / tea', category: 'beverage', form: 'jar', tags: ['vegan', 'comfort'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 1, sl: { ...SRC.shortDry, min: 18, max: 36 }, serving: '1 cup', kcal: 0, pkg: '8 oz jar', servings: 120, volL: 0.4, cost: 2, role: 'drink' },
   { id: 'cocoa-mix', name: 'Hot cocoa mix', category: 'beverage', form: 'packet', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['milk'], mayContain: ['soy'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 0.75, sl: SRC.shortDry, serving: '1 packet', kcal: 120, pkg: '10-pack', servings: 10, volL: 0.4, cost: 1, rot: 2, role: 'drink' },
+  // ---- Baking supplies & seasonings (sized by use, not calories) ----
+  { id: 'salt', name: 'Salt (iodized)', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tsp', kcal: 0, pkg: '26 oz canister', servings: 120, volL: 0.8, cost: 1, rot: 1, role: 'staple', use: 0.75, from: 'short', notes: 'For cooking, baking and preserving. Keeps indefinitely if kept dry.' },
+  { id: 'black-pepper', name: 'Black pepper', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/4 tsp', kcal: 0, pkg: '4 oz tin', servings: 180, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.25, from: 'short' },
+  { id: 'sugar', name: 'Sugar (white)', category: 'pantry', form: 'dry', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tbsp', kcal: 48, pkg: '4 lb bag', servings: 145, volL: 2.2, cost: 1, rot: 1, role: 'staple', use: 0.5, from: 'short', notes: 'For baking, oatmeal and drinks. Store in an airtight bucket to keep bugs and moisture out.' },
+  { id: 'bouillon', name: 'Bouillon (chicken or beef)', category: 'pantry', form: 'jar', tags: [], mayContain: ['wheat', 'soy', 'milk'], prep: 'add-hot-water', water: 1, sl: { min: 18, max: 36, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Granules or cubes' }, serving: '1 tsp (1 cup broth)', kcal: 10, pkg: '12 oz jar', servings: 100, volL: 0.4, cost: 1, rot: 2, role: 'staple', use: 0.25, from: 'short', notes: 'Flavors rice, beans, soups and gravy. Many contain wheat, soy or milk; check the label.' },
+  { id: 'honey', name: 'Honey', category: 'pantry', form: 'jar', tags: ['vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tbsp', kcal: 64, pkg: '32 oz jar', servings: 43, volL: 0.7, cost: 2, rot: 1, role: 'staple', use: 0.15, from: 'medium', notes: 'Never give honey to babies under 1 year. Crystallizes over time; warm gently to soften.' },
+  { id: 'garlic-powder', name: 'Garlic powder', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/4 tsp', kcal: 0, pkg: '3 oz jar', servings: 120, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.15, from: 'medium' },
+  { id: 'onion-powder', name: 'Onion powder', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/4 tsp', kcal: 0, pkg: '3 oz jar', servings: 120, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.15, from: 'medium' },
+  { id: 'chili-powder', name: 'Chili powder', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '3 oz jar', servings: 60, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.1, from: 'medium', notes: 'For beans, chili and rice.' },
+  { id: 'cumin', name: 'Ground cumin', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '2 oz jar', servings: 40, volL: 0.15, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium' },
+  { id: 'italian-seasoning', name: 'Italian seasoning', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '1 oz jar', servings: 40, volL: 0.15, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'For pasta, soups and flatbread.' },
+  { id: 'cinnamon', name: 'Ground cinnamon', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '2 oz jar', servings: 40, volL: 0.15, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'For oatmeal, pancakes and baking.' },
+  { id: 'soy-sauce', name: 'Soy sauce', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], contains: ['soy', 'wheat'], prep: 'ready-to-eat', sl: { min: 24, max: 36, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '1 tbsp', kcal: 10, pkg: '15 oz bottle', servings: 30, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'Gluten-free tamari is an option if anyone avoids wheat.' },
+  { id: 'hot-sauce', name: 'Hot sauce', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 60, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 0, pkg: '5 oz bottle', servings: 30, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium' },
+  { id: 'vinegar', name: 'Vinegar (white or cider)', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tbsp', kcal: 0, pkg: '32 oz bottle', servings: 64, volL: 1, cost: 1, rot: 1, role: 'staple', use: 0.05, from: 'medium', notes: 'For cooking and dressings; also useful for cleaning.' },
+  { id: 'baking-powder', name: 'Baking powder', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 2, pkg: '8 oz can', servings: 48, volL: 0.3, cost: 1, rot: 3, role: 'staple', use: 0.2, from: 'long', notes: 'For pancakes, biscuits and quick breads. Test it: a spoonful in hot water should fizz. Rotate yearly.' },
+  { id: 'baking-soda', name: 'Baking soda', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 36, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 0, pkg: '1 lb box', servings: 90, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'long', notes: 'For baking; also useful for cleaning and odors.' },
+  { id: 'yeast', name: 'Instant or active dry yeast', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Unopened, cool and dry; keeps much longer in the freezer', assumptions: 'Unopened' }, serving: '2 1/4 tsp (1 packet)', kcal: 20, pkg: '4 oz jar', servings: 16, volL: 0.2, cost: 2, rot: 3, role: 'staple', use: 0.05, from: 'long', notes: 'For bread and pizza dough from your flour or ground wheat. Store in the freezer if you can; rotate yearly.' },
+  { id: 'cornstarch', name: 'Cornstarch', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian', 'gluten-free'], contains: ['corn'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tbsp', kcal: 30, pkg: '16 oz box', servings: 56, volL: 0.5, cost: 1, rot: 1, role: 'staple', use: 0.03, from: 'long', notes: 'Thickens gravy, soups and sauces.' },
+  { id: 'vanilla', name: 'Vanilla extract', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tsp', kcal: 12, pkg: '2 oz bottle', servings: 12, volL: 0.1, cost: 3, rot: 1, role: 'staple', use: 0.02, from: 'long' },
 ];
 
 export function buildSeedCatalog(): FoodItem[] {
@@ -212,6 +236,7 @@ export function buildSeedCatalog(): FoodItem[] {
       packagingDurability: s.dur ?? (s.form === 'canned' || s.form === 'freeze-dried' ? 3 : s.form === 'box' || s.form === 'pouch' ? 1 : 2),
       safetyNotes: s.notes,
       equipment: s.equip,
+      pantry: s.use !== undefined ? { perPersonDay: s.use, fromTier: s.from ?? 'short' } : undefined,
       mealRole: s.role,
       active: true,
       needsReview: false,

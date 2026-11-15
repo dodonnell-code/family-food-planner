@@ -396,3 +396,77 @@ describe('planner: variety, favorites and a balanced diet', () => {
     }
   });
 });
+
+describe('planner: baking supplies & seasonings', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+  const pantry = (p: ReturnType<typeof buildPlan>) => p.items.filter((i) => i.bucket === 'pantry').map((i) => i.foodId);
+
+  it('basics in every plan, seasonings from 14 days, baking supplies at 90 days', () => {
+    const s = pantry(buildPlan(input(fam(), 'short', { scenario: 'limited-cook' })));
+    const m = pantry(buildPlan(input(fam(), 'medium')));
+    const l = pantry(buildPlan(input(fam(), 'long')));
+    expect(s).toEqual(expect.arrayContaining(['salt', 'black-pepper', 'cooking-oil', 'sugar', 'bouillon']));
+    expect(s).not.toContain('cumin');
+    expect(m).toEqual(expect.arrayContaining(['salt', 'garlic-powder', 'chili-powder', 'soy-sauce']));
+    expect(m).not.toContain('yeast');
+    expect(l).toEqual(expect.arrayContaining(['salt', 'baking-powder', 'yeast', 'baking-soda', 'cinnamon']));
+  });
+
+  it('sizes by use per person per day, at least one container', () => {
+    const l = buildPlan(input(fam(), 'long'));
+    const salt = l.items.find((i) => i.foodId === 'salt')!;
+    expect(salt.servings).toBe(Math.ceil(0.75 * 3 * 90));
+    expect(salt.packages).toBe(Math.ceil(salt.servings / 120));
+    expect(l.items.find((i) => i.foodId === 'vanilla')!.packages).toBeGreaterThanOrEqual(1);
+    expect(l.diet!.distinct.total).toBe(l.items.filter((i) => i.bucket !== 'pantry').length);
+  });
+
+  it('allergy rules still apply (soy sauce left out for a soy allergy)', () => {
+    const p = buildPlan(input([member('alice', { restrictions: [restr('alice', 'soy')] }), member('dan')], 'medium'));
+    expect(pantry(p)).not.toContain('soy-sauce');
+    expect(pantry(p)).toContain('salt');
+  });
+
+  it('carries into the bigger plans', () => {
+    const chain = { days: { short: 3, medium: 14, long: 90 } };
+    const m = buildNestedPlan(input(fam(), 'medium'), chain);
+    const salt = m.items.find((i) => i.foodId === 'salt')!;
+    expect(salt.fromBase).toBeDefined();
+    expect(salt.servings).toBe(Math.ceil(0.75 * 3 * 14));
+  });
+});
+
+describe('planner: calorie goal and foods not chosen', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+
+  it('reaches the calorie goal even with few foods, and says what it added or increased', () => {
+    const few = ['white-rice', 'pinto-beans-dry', 'peanut-butter'].map(food).filter(Boolean);
+    const p = buildPlan(input(fam(), 'medium', { foods: few }));
+    expect(p.plannedCalories).toBeGreaterThanOrEqual(p.targetCalories);
+    expect(p.topUp!.shortCalories).toBe(0);
+    expect(p.topUp!.increased.length + p.topUp!.added.length).toBeGreaterThan(0);
+  });
+
+  it('reports the gap when there is nothing safe to fill it', () => {
+    const p = buildPlan(input([member('alice', { restrictions: [restr('alice', 'peanut')] })], 'medium', { foods: [food('peanut-butter')] }));
+    expect(p.topUp!.shortCalories).toBe(p.targetCalories);
+  });
+
+  it('lists every safe food that was not picked, with a reason', () => {
+    const p = buildPlan(input(fam(), 'medium'));
+    const inPlan = new Set(p.items.map((i) => i.foodId));
+    const excluded = new Set(p.excluded.map((e) => e.foodId));
+    expect(p.notChosen!.length).toBeGreaterThan(0);
+    for (const n of p.notChosen!) {
+      expect(inPlan.has(n.foodId)).toBe(false);
+      expect(excluded.has(n.foodId)).toBe(false);
+      expect(n.reason.length).toBeGreaterThan(5);
+    }
+  });
+
+  it('gives "not liked" as the reason when someone refuses a food', () => {
+    const p = buildPlan(input(fam().map((m) => ({ ...m, ratings: { 'sardines-canned': 1 as RatingCode } })), 'medium'));
+    expect(p.items.some((i) => i.foodId === 'sardines-canned')).toBe(false);
+    expect(p.notChosen!.find((x) => x.foodId === 'sardines-canned')?.reason).toMatch(/like it|rated it low/);
+  });
+});

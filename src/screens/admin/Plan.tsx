@@ -73,6 +73,7 @@ export default function Plan() {
         <div className="notice">No active members yet. <Link to="/admin/members">Add your family</Link> to get a plan.</div>
       ) : (
         <>
+          <CalorieGoal r={plan.result} />
           <Summary r={plan.result} />
           <p className="small muted" style={{ margin: 0 }}>
             {plan.result.base
@@ -343,6 +344,30 @@ function WaterFuel({ r }: { r: PlanResult }) {
   );
 }
 
+/** Prominent alert when the plan can't reach the calorie goal, and what was added to get there. */
+function CalorieGoal({ r }: { r: PlanResult }) {
+  const t = r.topUp;
+  if (!r.people || !t) return null;
+  if (t.shortCalories > 0) {
+    const days = r.dailyCaloriesTotal ? Math.round((t.shortCalories / r.dailyCaloriesTotal) * 10) / 10 : 0;
+    return (
+      <div className="notice danger stack" style={{ gap: 6, fontSize: '1.05rem' }} role="alert">
+        <strong>This plan is {num(t.shortCalories)} calories short of the goal (about {num(days)} days of food for everyone).</strong>
+        <span>There aren’t enough safe foods the family accepts to fill it. Add foods under “Admin changes” or “Left out” below, or add new foods to the catalog.</span>
+      </div>
+    );
+  }
+  if (!t.added.length && !t.increased.length) return null;
+  return (
+    <div className="notice stack" style={{ gap: 6 }} role="status">
+      <strong>The usual picks fell short of the calorie goal, so the plan made up the difference.</strong>
+      {t.added.length > 0 && <span>Added: {t.added.join(', ')}.</span>}
+      {t.increased.length > 0 && <span>Increased: {t.increased.join(', ')}.</span>}
+      <span className="small muted">Swap or leave out any of them on its row below.</span>
+    </div>
+  );
+}
+
 async function addAnyway(tier: Tier, foodId: string, name: string, unsafe: string) {
   if (unsafe && !window.confirm(`${name} isn’t safe for ${unsafe}.
 
@@ -448,9 +473,27 @@ function Additions({ r, tier, foods, names, subs }: { r: PlanResult; tier: Tier;
 function Excluded({ r, names, tier }: { r: PlanResult; names: Map<string, string>; tier: Tier }) {
   const people = r.excluded.filter((e) => e.reasons.length);
   const scenario = r.excluded.filter((e) => !e.reasons.length);
+  const notChosen = r.notChosen ?? [];
   return (
-    <section className="card stack">
+    <section className="card stack" id="left-out">
       <h2 style={{ margin: 0 }}>Left out</h2>
+      <p className="small muted" style={{ margin: 0 }}>Survey foods that aren’t in this plan, and why. Tap Add to put one in.</p>
+      {notChosen.length > 0 && (
+        <details>
+          <summary>{notChosen.length} safe food{notChosen.length === 1 ? '' : 's'} not chosen (variety, ratings or score)</summary>
+          <div className="list" style={{ marginTop: 8 }}>
+            {notChosen.map((e) => (
+              <div key={e.foodId} className="spread">
+                <div>
+                  <strong>{e.name}</strong>
+                  <div className="small muted">{e.reason}</div>
+                </div>
+                <button className="ghost small" onClick={() => addAnyway(tier, e.foodId, e.name, '')}>Add</button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <details>
         <summary>{people.length} food{people.length === 1 ? '' : 's'} not stocked because of someone’s allergy or restriction</summary>
         <div className="list" style={{ marginTop: 8 }}>

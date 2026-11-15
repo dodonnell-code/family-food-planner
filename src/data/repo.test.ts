@@ -32,7 +32,7 @@ describe('seed catalog', () => {
     const cat = buildSeedCatalog();
     expect(cat.length).toBeGreaterThanOrEqual(50);
     expect(new Set(cat.map((f) => f.id)).size).toBe(cat.length);
-    expect(new Set(cat.map((f) => f.category)).size).toBe(9);
+    expect(new Set(cat.map((f) => f.category)).size).toBe(10);
     expect(cat.every((f) => f.allergens.verifyLabel)).toBe(true);
   });
   it('is seeded once and does not duplicate on re-init', async () => {

@@ -191,7 +191,9 @@ export type FoodCategory =
   | 'dairy-alt'
   | 'meal'
   | 'fat-snack'
-  | 'beverage';
+  | 'beverage'
+  /** Baking supplies and seasonings: sized by use per person per day, not by calories. */
+  | 'pantry';
 
 export type FoodForm = 'canned' | 'pouch' | 'dry' | 'freeze-dried' | 'dehydrated' | 'jar' | 'box' | 'bottle' | 'packet' | 'bulk';
 
@@ -266,6 +268,8 @@ export interface FoodItem {
    * its preparation method implies (see domain/equipment.ts).
    */
   equipment?: string[];
+  /** Pantry items (baking & seasonings): catalog servings used per person per day, and the smallest plan that includes it. */
+  pantry?: { perPersonDay: number; fromTier: Tier };
   /** Can act as a main meal component (vs. snack/side). */
   mealRole: 'main' | 'side' | 'snack' | 'drink' | 'staple';
   active: boolean;

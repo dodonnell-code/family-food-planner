@@ -7,7 +7,7 @@ import type { FoodCategory } from '../../domain/types';
 
 export const CATEGORY_LABELS: Record<FoodCategory, string> = {
   protein: 'Meat, fish & protein', legume: 'Beans & lentils', grain: 'Grains, bread & cereal', fruit: 'Fruit', vegetable: 'Vegetables',
-  meal: 'Ready meals & soups', 'fat-snack': 'Snacks & spreads', 'dairy-alt': 'Milk & alternatives', beverage: 'Drinks',
+  meal: 'Ready meals & soups', 'fat-snack': 'Snacks & spreads', 'dairy-alt': 'Milk & alternatives', beverage: 'Drinks', pantry: 'Baking & seasonings',
 };
 
 export default function Catalog() {
