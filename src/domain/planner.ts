@@ -12,7 +12,7 @@ import { checkFood } from './safety';
 import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-4';
+export const ENGINE_VERSION = 'engine-5';
 export const NEEDS_COOKING = 'Needs heat or cooking';
 export const ADMIN_REMOVED = 'Swapped out or left out by admin';
 /** Default cap on canned food in long-term plans with cooking (% of calories). */
@@ -63,6 +63,15 @@ export interface PlanInput {
   /** The next-smaller plan. Plans are nested: everything in it counts toward this one, and
    *  this plan only adds what's still needed on top. */
   base?: PlanResult;
+}
+
+export interface DietBalance {
+  /** Share of calories from protein (target at least 10%). */
+  proteinPct: number;
+  proteinGPerPersonDay: number;
+  /** Fruit + vegetable servings per person per day (target at least 2). */
+  produceServingsPerPersonDay: number;
+  distinct: { mains: number; starches: number; fruits: number; vegetables: number; total: number };
 }
 
 export interface WaterTreatment {
@@ -195,6 +204,8 @@ export interface PlanResult {
   overrides?: PlanOverride[];
   /** The smaller plan this one builds on (its food is included here). */
   base?: { tier: Tier; days: number; calories: number };
+  /** How balanced and varied the plan is, per person per day. */
+  diet?: DietBalance;
   /** Stored water covers the first `drinkingDays` days (drinking + food prep). After that, `treatment` says how much water to make safe. */
   water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number; treatment?: WaterTreatment };
   fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
@@ -237,11 +248,26 @@ export const STAPLES: Record<Tier, { label: string; options: ID[] }[]> = {
   ],
 };
 
+/** Minimum distinct foods per group (variety grows with the length of the plan). */
 const PICKS: Record<Tier, Record<Bucket, number>> = {
-  short: { mains: 3, starches: 2, produce: 2, snacks: 2, drinks: 1 },
-  medium: { mains: 5, starches: 3, produce: 4, snacks: 3, drinks: 2 },
-  long: { mains: 6, starches: 4, produce: 4, snacks: 3, drinks: 2 },
+  short: { mains: 4, starches: 3, produce: 4, snacks: 2, drinks: 2 },
+  medium: { mains: 8, starches: 5, produce: 6, snacks: 4, drinks: 3 },
+  long: { mains: 10, starches: 6, produce: 6, snacks: 4, drinks: 3 },
 };
+/** Family favorites can add up to this many foods per group beyond the minimum. */
+const FAVORITE_EXTRA: Record<Bucket, number> = { mains: 4, starches: 3, produce: 3, snacks: 3, drinks: 2 };
+
+/**
+ * A family favorite: rated by at least half the household, average 4/5 or better, nobody
+ * below 3/5, and nobody with a dislike, refusal or "avoid" against it.
+ */
+export function isFavorite(x: { verdicts: MemberVerdict[] }, people: number): boolean {
+  const rated = x.verdicts.filter((v) => typeof v.rating === 'number');
+  if (!people || rated.length < Math.ceil(people / 2)) return false;
+  if (x.verdicts.some((v) => v.status === 'dislike' || v.status === 'refuse' || v.status === 'avoid' || v.status === 'unsafe')) return false;
+  const r = rated.map((v) => v.rating as number);
+  return Math.min(...r) >= 3 && r.reduce((a, b) => a + b, 0) / r.length >= 4;
+}
 
 const PREP_EASE: Record<PrepMethod, number> = { 'ready-to-eat': 1, 'add-cold-water': 0.85, 'add-hot-water': 0.6, heat: 0.5, simmer: 0.4, boil: 0.3 };
 const ROLE_UTILITY: Record<FoodItem['mealRole'], number> = { main: 1, staple: 0.8, side: 0.6, snack: 0.5, drink: 0.35 };
@@ -353,8 +379,8 @@ export const TIER_ORDER: Tier[] = ['short', 'medium', 'long'];
 export function buildNestedPlan(input: PlanInput, chain: { days: Record<Tier, number>; include?: Partial<Record<Tier, ID[]>> }): PlanResult {
   let base: PlanResult | undefined;
   for (const t of TIER_ORDER.slice(0, TIER_ORDER.indexOf(input.tier))) {
-    // The smaller supplies keep their usual scenario, except that a no-cook plan is no-cook all the way down.
-    const scenario: Scenario = input.scenario === 'no-cook' || t === 'short' ? 'no-cook' : 'limited-cook';
+    // The smaller supplies use the same cooking assumption as the plan being viewed.
+    const scenario: Scenario = input.scenario;
     base = buildPlan({ ...input, tier: t, scenario, days: chain.days[t], include: chain.include?.[t] ?? [], base });
   }
   return buildPlan({ ...input, base });
@@ -373,6 +399,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const overrides: PlanOverride[] = [];
   const foodName = (id: ID) => input.foods.find((f) => f.id === id)?.name ?? 'a food';
   const staples = new Set<ID>();
+  const favorites = new Set<ID>();
   // Food from the smaller plan this one builds on is already counted, so it always stays.
   const carried = new Map((input.base?.items ?? []).map((i) => [i.foodId, i]));
   const carriedUnsafe = new Map<ID, ExcludedFood['reasons']>();
@@ -465,14 +492,21 @@ export function buildPlan(input: PlanInput): PlanResult {
       .sort((a, z) => z.score - a.score || a.f.name.localeCompare(z.f.name));
     const chosen: typeof pool = [];
     const forms = new Map<string, number>();
-    const kinds = new Set<string>();
+    const kinds = new Map<string, number>();
+    const addKind = (x: (typeof pool)[number]) => { const k = proteinKind(x.f); if (k) kinds.set(k, (kinds.get(k) ?? 0) + 1); };
     const fits = (x: (typeof pool)[number], strict: boolean) => {
       if (chosen.includes(x)) return false;
       if (!strict) return true;
-      // Variety: at most two foods of the same category+form, one per protein type (not tuna AND sardines).
+      // Variety: at most two foods of the same category+form, and two of each protein type.
       if ((forms.get(`${x.f.category}:${x.f.form}`) ?? 0) >= 2) return false;
       const k = proteinKind(x.f);
-      if (k && kinds.has(k)) return false;
+      if (k && (kinds.get(k) ?? 0) >= 2) return false;
+      // Fruit and vegetables: keep a balance of both.
+      if (b === 'produce') {
+        const same = chosen.filter((c) => c.f.category === x.f.category).length;
+        const other = chosen.filter((c) => c.f.category !== x.f.category).length;
+        if (same > other && pool.some((y) => y.f.category !== x.f.category && !chosen.includes(y))) return false;
+      }
       // Long-term canned cap: one canned food per group, and none once the budget is used up.
       if (x.f.form === 'canned' && cannedBudget.left !== Infinity && (cannedBudget.left < 1 || chosen.some((c) => c.f.form === 'canned'))) return false;
       // Anything the group mostly doesn't want is only a last resort.
@@ -482,8 +516,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       const x = pool.find((y) => fits(y, true)) ?? pool.find((y) => fits(y, false) && y.factors.acceptance >= 0.3) ?? (chosen.length ? undefined : pool[0]);
       if (!x) return false;
       forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
-      const k = proteinKind(x.f);
-      if (k) kinds.add(k);
+      addKind(x);
       chosen.push(x);
       return true;
     };
@@ -501,8 +534,21 @@ export function buildPlan(input: PlanInput): PlanResult {
     for (const x of pool.filter((y) => forced.has(y.f.id) && !chosen.includes(y))) {
       chosen.push(x);
       forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
-      const k = proteinKind(x.f);
-      if (k) kinds.add(k);
+      addKind(x);
+    }
+    // Family favorites (everyone fine with it, most like it) go in before the rest.
+    let favs = 0;
+    // Best-loved first (family rating), then overall score.
+    for (const x of [...pool].sort((a, z) => (z.mean ?? 0) - (a.mean ?? 0) || z.score - a.score)) {
+      if (favs >= PICKS[tier][b] + FAVORITE_EXTRA[b]) break;
+      if (!isFavorite(x, people) || chosen.includes(x)) continue;
+      // The long-term canned limit still applies to favorites.
+      if (x.f.form === 'canned' && cannedBudget.left !== Infinity && (cannedBudget.left < 1 || chosen.some((c) => c.f.form === 'canned'))) continue;
+      chosen.push(x);
+      favorites.add(x.f.id);
+      forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
+      addKind(x);
+      favs++;
     }
     while (chosen.length < PICKS[tier][b] && takeNext());
     // Food from the smaller plan is part of this one at its amount. It only grows if this
@@ -543,9 +589,12 @@ export function buildPlan(input: PlanInput): PlanResult {
       }
       const sum = open.reduce((t, x) => t + (x.score || 1), 0);
       let placed = 0;
+      // Groups with a servings limit (fruit & veg, snacks, drinks) share it out, so every chosen food gets some.
+      const servingsRound = bucketServingsLeft.n;
       for (const x of open) {
         const have = alloc.get(x) ?? 0;
-        const add = Math.max(0, Math.min(capFor(x) - have, bucketServingsLeft.n, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing));
+        const w = (x.score || 1) / sum;
+        const add = Math.max(0, Math.min(capFor(x) - have, bucketServingsLeft.n, servingsRound * w, (share * w) / x.f.nutrition.caloriesPerServing));
         alloc.set(x, have + add);
         if (x.f.form === 'canned' && !forced.has(x.f.id)) cannedBudget.left -= add * x.f.nutrition.caloriesPerServing;
         bucketServingsLeft.n -= add;
@@ -581,6 +630,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
       }
       if (staples.has(f.id) && !forced.has(f.id)) why.unshift('Preparedness staple');
+      else if (favorites.has(f.id) && !forced.has(f.id)) why.unshift('Family favorite');
       if (bi && baseInfo) {
         why.unshift(`Includes the ${baseInfo.days}-day supply’s ${bi.packages}`);
         if (!forced.has(f.id)) for (const r of carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override in the ${baseInfo.days}-day plan: store it apart and labeled.`);
@@ -634,6 +684,28 @@ export function buildPlan(input: PlanInput): PlanResult {
     return { memberId: m.id, name: m.name, dailyCalories: m.dailyCalories ?? defaults.defaultDailyCalories, mealOptions: ok.length, mealOptionNames: ok.map((i) => i.name), hasSurvey: !!m.surveyId, suggestion, notes };
   });
   for (const c of coverage) if (c.mealOptions < defaults.minDailyMealOptions && members.length) warnings.push(`${c.name} has fewer main-dish options than your target of ${defaults.minDailyMealOptions}.`);
+
+  // ---- Diet balance ----
+  const byId = new Map(foods.map((f) => [f.id, f]));
+  const proteinG = items.reduce((t, i) => t + i.servings * (byId.get(i.foodId)?.nutrition.proteinG ?? 0), 0);
+  const produceServings = items.filter((i) => i.bucket === 'produce').reduce((t, i) => t + i.servings, 0);
+  const personDays = Math.max(1, people * days);
+  const diet: DietBalance = {
+    proteinPct: plannedCalories ? Math.round((proteinG * 4 * 100) / plannedCalories) : 0,
+    proteinGPerPersonDay: Math.round(proteinG / personDays),
+    produceServingsPerPersonDay: round1(produceServings / personDays),
+    distinct: {
+      mains: items.filter((i) => i.bucket === 'mains').length,
+      starches: items.filter((i) => i.bucket === 'starches').length,
+      fruits: items.filter((i) => i.category === 'fruit').length,
+      vegetables: items.filter((i) => i.category === 'vegetable').length,
+      total: items.length,
+    },
+  };
+  if (people && items.length) {
+    if (diet.proteinPct < 10) warnings.push(`Protein is low (${diet.proteinPct}% of calories; aim for at least 10%). Add more beans, meat, fish, eggs or nut butter.`);
+    if (diet.produceServingsPerPersonDay < 2) warnings.push(`Only ${diet.produceServingsPerPersonDay} servings of fruit and vegetables per person per day; aim for at least 2.`);
+  }
 
   // ---- Water, fuel, equipment, storage, cost ----
   // Stored water (drinking + food prep) covers the first days, up to the reserve setting. Storing
@@ -690,6 +762,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   return {
     engineVersion: ENGINE_VERSION, tier, scenario, days, people, dailyCaloriesTotal, targetCalories, plannedCalories,
     items, reserved, excluded, coverage, overrides,
+    diet,
     base: input.base && baseInfo ? { ...baseInfo, calories: input.base.plannedCalories } : undefined,
     water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons, treatment },
     fuel: { burnerMinutes, items: fuelItems },

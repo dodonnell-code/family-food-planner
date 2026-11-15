@@ -112,7 +112,7 @@ describe('planner: quantities, water and needs', () => {
       const i = input([member('a'), member('b'), member('c')], tier);
       const plan = buildPlan(i);
       const fish = plan.items.filter((x) => food(x.foodId).tags.includes('fish'));
-      expect(fish.length).toBeLessThanOrEqual(1);
+      expect(fish.length).toBeLessThanOrEqual(2);
       for (const x of plan.items) expect(x.servings).toBeLessThanOrEqual(Math.ceil(3 * i.days * 2));
     }
   });
@@ -231,7 +231,7 @@ describe('planner: admin additions', () => {
 describe('planner: nested supplies', () => {
   const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
   const chain = { days: { short: 3, medium: 14, long: 90 } };
-  const nested = (tier: Tier) => buildNestedPlan(input(fam(), tier), chain);
+  const nested = (tier: Tier) => buildNestedPlan(input(fam(), tier, { scenario: 'limited-cook' }), chain);
 
   it('the short-term supply is part of the medium-term one, and both are part of the long-term one', () => {
     const [s, m, l] = [nested('short'), nested('medium'), nested('long')];
@@ -351,5 +351,48 @@ describe('planner: water after the stored days', () => {
     const p = buildPlan(input(five, 'medium', { defaults: { ...DEFAULT_PLANNING, waterReserveDays: 14 } }));
     expect(p.water.drinkingGallons).toBe(70);
     expect(p.water.totalGallons).toBe(Math.round((70 + p.water.prepGallons) * 10) / 10);
+  });
+});
+
+describe('planner: variety, favorites and a balanced diet', () => {
+  const five = (ratings: Record<string, RatingCode> = {}) => ['a', 'b', 'c', 'd', 'e'].map((id) => member(id, { ratings }));
+  const okWithEverything = (fav: string[]) => Object.fromEntries(foods.map((f) => [f.id, (fav.includes(f.id) ? 5 : 3) as RatingCode]));
+
+  it('puts family favorites in every plan, including the 3-day one', () => {
+    const fam = five(okWithEverything(['mac-cheese-cup', 'canned-peaches', 'tuna-canned']));
+    for (const tier of ['short', 'medium', 'long'] as Tier[]) {
+      const p = buildPlan(input(fam, tier, { scenario: 'limited-cook' }));
+      for (const id of ['mac-cheese-cup', 'canned-peaches']) {
+        const item = p.items.find((i) => i.foodId === id);
+        expect(item, `${id} in ${tier}`).toBeDefined();
+        expect(item!.why[0]).toBe('Family favorite');
+      }
+    }
+  });
+
+  it('a food someone dislikes is not treated as a favorite', () => {
+    const r = okWithEverything(['mac-cheese-cup']);
+    const fam = [...five(r).slice(0, 4), member('e', { ratings: { ...r, 'mac-cheese-cup': 2 } })];
+    const p = buildPlan(input(fam, 'short', { scenario: 'limited-cook' }));
+    expect(p.items.find((i) => i.foodId === 'mac-cheese-cup')?.why[0]).not.toBe('Family favorite');
+  });
+
+  it('has more variety in longer plans, with both fruit and vegetables', () => {
+    const counts = (['short', 'medium', 'long'] as Tier[]).map((t) => buildPlan(input(five(), t, { scenario: 'limited-cook' })).diet!);
+    expect(counts[1].distinct.total).toBeGreaterThan(counts[0].distinct.total);
+    expect(counts[1].distinct.mains).toBeGreaterThanOrEqual(8);
+    for (const d of counts) {
+      expect(d.distinct.fruits).toBeGreaterThanOrEqual(1);
+      expect(d.distinct.vegetables).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('meets basic diet targets: enough protein and fruit/vegetables', () => {
+    for (const tier of ['short', 'medium', 'long'] as Tier[]) {
+      const p = buildPlan(input(five(), tier, { scenario: 'limited-cook' }));
+      expect(p.diet!.proteinPct, tier).toBeGreaterThanOrEqual(10);
+      expect(p.diet!.produceServingsPerPersonDay, tier).toBeGreaterThanOrEqual(2);
+      expect(p.warnings.some((w) => w.startsWith('Protein is low') || w.startsWith('Only'))).toBe(false);
+    }
   });
 });

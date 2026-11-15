@@ -104,7 +104,8 @@ export default function Plan() {
           <Additions r={plan.result} tier={tier} foods={plan.input.foods} names={names} subs={hh?.planSubstitutions ?? {}} />
           <Excluded r={plan.result} names={names} tier={tier} />
           <p className="small muted">
-            How foods are scored for this horizon (after safety rules): family acceptance {TIER_WEIGHTS[tier].acceptance}%, nutrition {TIER_WEIGHTS[tier].nutrition}%, ease of preparation {TIER_WEIGHTS[tier].prep}%, storage life {TIER_WEIGHTS[tier].storage}%, cost &amp; space {TIER_WEIGHTS[tier].cost}%, convenience {TIER_WEIGHTS[tier].convenience}%.
+            How foods are chosen: first, anything unsafe for someone is left out. Then, in each group (main dishes, grains, fruit &amp; vegetables, snacks, drinks), the plan takes preparedness staples (rice, beans, potatoes), your admin additions, and family favorites (everyone rated it 3+ and the average is 4+), best-loved first. The rest is filled by score, keeping a mix of fruit and vegetables and no more than two foods of the same kind (e.g. two fish). Longer plans get more variety. Calories are split so main dishes and grains carry most of them, with fruit, vegetables and snacks for nutrition and morale.{' '}
+            Scores for this horizon: family acceptance {TIER_WEIGHTS[tier].acceptance}%, nutrition {TIER_WEIGHTS[tier].nutrition}%, ease of preparation {TIER_WEIGHTS[tier].prep}%, storage life {TIER_WEIGHTS[tier].storage}%, cost &amp; space {TIER_WEIGHTS[tier].cost}%, convenience {TIER_WEIGHTS[tier].convenience}%.
             {tier === 'long' && ' Long-term plans favor dry staples that keep for years without rotation; canned food fills in.'}
             These are starting weights, not a scientific standard. Quantities are estimates from generic catalog entries; check real package sizes and labels.
           </p>
@@ -124,6 +125,11 @@ function Summary({ r }: { r: PlanResult }) {
     ['Packages', String(packages), `${r.items.length + r.reserved.filter((x) => x.foodId).length} different foods`],
     ['Water to store', `${num(r.water.totalGallons)} gal`, `${num(r.water.drinkingGallons)} drinking + ${num(r.water.prepGallons)} for food`],
   ];
+  if (r.diet) stats.push(
+    ['Variety', `${r.diet.distinct.total} foods`, `${r.diet.distinct.mains} main dishes · ${r.diet.distinct.fruits} fruits · ${r.diet.distinct.vegetables} vegetables`],
+    ['Protein', `${r.diet.proteinPct}% of calories`, `about ${r.diet.proteinGPerPersonDay} g per person a day (aim 10%+)`],
+    ['Fruit & vegetables', `${num(r.diet.produceServingsPerPersonDay)} a day`, 'servings per person (aim 2+)'],
+  );
   return (
     <div className="stats">
       {stats.map(([k, v, sub]) => (

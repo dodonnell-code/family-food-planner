@@ -7,9 +7,10 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 6;
+export const CATALOG_VERSION = 7;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice'];
@@ -152,7 +153,7 @@ const S: Seed[] = [
   { id: 'fd-meal', name: 'Freeze-dried meal pouches, assorted', category: 'meal', form: 'freeze-dried', examples: 'Any mix of flavors in single pouches, e.g. chili mac, beef stroganoff, chicken & rice, breakfast skillet', tags: [], contains: ['wheat', 'milk', 'soy'], mayContain: ['egg'], prep: 'add-cold-water', water: 1, sl: SRC.freezeDried, serving: '1 cup', kcal: 270, protein: 13, pkg: '2-serving pouch', servings: 2, volL: 0.6, cost: 3, rot: 1, role: 'main', notes: 'Hot water is best (about 10 minutes); cold water works too in about 20–30 minutes, so they suit no-cook days. Eat from the pouch, no dishes. Most contain wheat, milk and soy; some also contain egg, fish, shellfish, peanut, tree nuts or sesame. Check every pouch against your family’s allergies and restrictions.' },
   { id: 'fd-breakfast', name: 'Freeze-dried breakfasts, assorted (#10 cans)', category: 'meal', form: 'freeze-dried', examples: 'Any mix, e.g. scrambled eggs, breakfast skillet, granola with milk, oatmeal', tags: ['vegetarian'], contains: ['egg', 'milk'], mayContain: ['wheat', 'soy'], prep: 'add-hot-water', cookMin: 5, batch: 4, water: 0.75, sl: SRC.freezeDried, serving: '1 cup', kcal: 230, protein: 12, pkg: '#10 can', servings: 10, volL: 3.5, cost: 2, rot: 1, role: 'main', notes: 'Buy a variety. Egg dishes contain egg and usually milk; granola and oatmeal kinds may contain wheat, nuts or soy instead. Check every can against your family’s allergies and restrictions; some breakfast skillets include meat.' },
   { id: 'soup-mix-dry', name: 'Dry soup mix', category: 'meal', form: 'dry', tags: ['vegetarian'], contains: ['wheat'], prep: 'simmer', cookMin: 20, batch: 8, water: 1.5, sl: SRC.longDry, serving: '1 cup prepared', kcal: 150, protein: 6, pkg: '1 lb bag', servings: 8, volL: 0.8, cost: 1, role: 'main' },
-  { id: 'mac-cheese-cup', name: 'Microwave/add-water mac & cheese cup', category: 'meal', form: 'packet', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten', 'milk'], prep: 'add-hot-water', cookMin: 5, batch: 4, water: 0.33, sl: SRC.shortDry, serving: '1 cup', kcal: 220, protein: 6, pkg: '4-pack', servings: 4, volL: 0.8, cost: 1, rot: 3, role: 'main' },
+  { id: 'mac-cheese-cup', name: 'Boxed macaroni & cheese', category: 'meal', form: 'box', examples: 'Any brand of boxed mac & cheese', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['wheat', 'gluten', 'milk'], prep: 'boil', cookMin: 12, batch: 6, water: 1.5, sl: { ...SRC.shortDry, min: 12, max: 24 }, serving: '1 cup prepared', kcal: 260, protein: 9, pkg: '7.25 oz box', servings: 3, volL: 0.6, cost: 1, rot: 2, role: 'main', notes: 'Without fresh milk and butter, use powdered milk and a spoon of oil. Boiling water can be saved for washing up.', equip: ['Cooking pot with lid', 'Colander or strainer'] },
 
   // ---- Fats / snacks ----
   { id: 'peanut-butter', name: 'Peanut butter', category: 'fat-snack', form: 'jar', tags: ['vegan', 'vegetarian', 'high-protein', 'kid-friendly'], contains: ['peanut'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '2 tbsp', kcal: 190, protein: 7, pkg: '16 oz jar', servings: 14, volL: 0.5, cost: 1, rot: 2, role: 'side' },

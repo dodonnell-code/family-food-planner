@@ -8,7 +8,8 @@ import type { ID, PlanSnapshot, PlanningScenario, RatingCode, Scenario, Tier } f
 
 export const TIER_LABEL: Record<Tier, string> = { short: 'Short term', medium: 'Medium term', long: 'Long term' };
 export const SCENARIO_LABEL: Record<Scenario, string> = { 'no-cook': 'No cooking', 'limited-cook': 'Limited cooking' };
-export const defaultScenario = (tier: Tier): Scenario => (tier === 'short' ? 'no-cook' : 'limited-cook');
+/** Every plan assumes some cooking (camp stove) by default; "No cooking" stays available as a backup check. */
+export const defaultScenario = (_tier: Tier): Scenario => 'limited-cook';
 
 export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoKey | null, database: PlannerDB = defaultDb): Promise<PlanInput & { sourceSurveyIds: ID[] }> {
   const hh = await database.households.toCollection().first();
