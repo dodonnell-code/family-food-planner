@@ -1,5 +1,5 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
-import { buildSeedCatalog, CATALOG_VERSION } from './seedCatalog';
+import { buildSeedCatalog, CATALOG_VERSION, RETIRED_SEED_IDS } from './seedCatalog';
 import { pick, recordChange } from './changes';
 import type {
   Household,
@@ -53,6 +53,7 @@ export async function ensureInitialized(database: PlannerDB = defaultDb): Promis
       const seed = buildSeedCatalog();
       await database.foods.bulkAdd(seed.filter((f) => !existing.has(f.id)));
       await database.foods.bulkPut(seed.filter((f) => existing.get(f.id)?.revision === 1));
+      for (const id of RETIRED_SEED_IDS) { const f = existing.get(id); if (f?.revision === 1 && f.active) await database.foods.update(id, { active: false }); }
       await database.meta.put({ key: 'catalogVersion', value: CATALOG_VERSION });
     }
     return hh;

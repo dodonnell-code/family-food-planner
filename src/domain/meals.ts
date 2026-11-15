@@ -48,7 +48,7 @@ export const MEAL_RECIPES: MealRecipe[] = [
   {
     id: 'egg-scramble', name: 'Egg scramble or breakfast burritos', meal: 'Breakfast', heat: true,
     slots: [
-      { label: 'Eggs', options: [['fd-breakfast', 1.5], ['egg-powder', 2]] },
+      { label: 'Eggs', options: [['egg-powder', 2], ['fd-breakfast', 1.5]] },
       { label: 'Tortillas', options: [['tortillas-shelf', 1.5]], optional: true },
       { label: 'Meat', options: [['fd-meat', 0.5], ['spam-canned', 0.5]], optional: true },
       { label: 'Fruit on the side', options: FRUIT, optional: true },
@@ -148,7 +148,7 @@ export const MEAL_RECIPES: MealRecipe[] = [
   {
     id: 'chili', name: 'Chili with rice or crackers', meal: 'Dinner', heat: true,
     slots: [
-      { label: 'Chili', options: [['fd-chili', 1.5], ['chili-canned', 1.5], ['veg-chili-canned', 1.5]] },
+      { label: 'Chili', options: [['chili-canned', 1.5], ['veg-chili-canned', 1.5]] },
       { label: 'Rice or crackers', options: [['white-rice', 1], ['rice-pouch-rte', 1], ['crackers', 2]] },
       { label: 'Extra beans', options: [['kidney-beans-canned', 0.5], ['black-beans-canned', 0.5]], optional: true },
     ],
@@ -168,9 +168,9 @@ export const MEAL_RECIPES: MealRecipe[] = [
     freshAddIns: ['Smoked sausage', 'Onion, celery, bell pepper', 'Hot sauce'],
   },
   {
-    id: 'freeze-dried-dinner', name: 'Freeze-dried dinner and fruit', meal: 'Dinner', heat: true,
+    id: 'freeze-dried-dinner', name: 'Freeze-dried meal and fruit', meal: 'Dinner', heat: true,
     slots: [
-      { label: 'Freeze-dried meal', options: [['fd-meal', 1.5], ['fd-chicken-rice', 1.5], ['fd-meal-veg', 1.5], ['fd-chili', 1.5]] },
+      { label: 'Freeze-dried meal', options: [['fd-entree', 1.5], ['fd-meal', 1.5], ['fd-breakfast', 1.5]] },
       { label: 'Fruit', options: FRUIT, optional: true },
       { label: 'Vegetables', options: [['fd-corn-peas', 0.5], ['fd-veg', 0.5]], optional: true },
     ],

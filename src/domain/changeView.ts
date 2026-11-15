@@ -28,6 +28,16 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
     case 'food.deactivate': return `Food retired: ${foodName}`;
     case 'food.reactivate': return `Food restored: ${foodName}`;
     case 'household.update': {
+      if (c.after?.planSubstitutions) {
+        const b = (c.before?.planSubstitutions ?? {}) as Record<string, string>;
+        const a = c.after.planSubstitutions as Record<string, string>;
+        const nm = (id?: string) => l.foods?.get(id ?? '')?.name ?? 'a food';
+        const changed = Object.keys(a).find((k) => a[k] !== b[k]);
+        if (changed) return a[changed] ? `Admin swapped ${nm(changed)} for ${nm(a[changed])} in all plans` : `Admin left ${nm(changed)} out of all plans`;
+        const undone = Object.keys(b).find((k) => !(k in a));
+        if (undone) return `Admin undid the swap for ${nm(undone)}`;
+        return 'Plan swaps changed';
+      }
       if (!c.after?.planOverrides) return 'Planning settings changed';
       const b = (c.before?.planOverrides ?? {}) as Record<string, string[]>;
       const a = c.after.planOverrides as Record<string, string[]>;
@@ -92,7 +102,7 @@ const LABELS: Record<string, string> = {
   adminNoteEnc: 'Note', active: 'Active', kind: 'Need', confirmed: 'Amount confirmed', detailsEnc: 'Details', labelEnc: 'Condition',
   version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
   ignoredRefusals: 'Survey refusals not applied',
-  'planOverrides.short': 'Added to short-term plan', 'planOverrides.medium': 'Added to medium-term plan', 'planOverrides.long': 'Added to long-term plan',
+  planSubstitutions: 'Swaps', 'planOverrides.short': 'Added to short-term plan', 'planOverrides.medium': 'Added to medium-term plan', 'planOverrides.long': 'Added to long-term plan',
   name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
   rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', equipment: 'Equipment needed', mealRole: 'Meal role', needsReview: 'Needs review',
   'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',
@@ -123,6 +133,10 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   if (key === 'kind') return { kind: 'text', text: needKind(String(v))?.label ?? String(v) };
   if ((key === 'ignoredRefusals' || key.startsWith('planOverrides.')) && Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((id) => l.foods?.get(String(id))?.name ?? String(id)).join(', ') : 'none' };
   if (Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((x) => (key.startsWith('allergens.') ? subjectLabel(String(x)) : String(x))).join(', ') : 'none' };
+  if (key === 'planSubstitutions' && v && typeof v === 'object') {
+    const e = Object.entries(v as Record<string, string>);
+    return { kind: 'text', text: e.length ? e.map(([a, b]) => `${l.foods?.get(a)?.name ?? a} → ${b ? l.foods?.get(b)?.name ?? b : 'left out'}`).join('; ') : 'none' };
+  }
   if (key === 'mergedInto') return { kind: 'text', text: fname(l.members.get(String(v))) };
   if (key === 'leftAt' || key.endsWith('guestFrom') || key.endsWith('guestUntil')) return { kind: 'text', text: new Date(String(v)).toLocaleDateString() };
   if (key === 'planningProfile.presence') return { kind: 'text', text: String(v).replace(/-/g, ' ') };

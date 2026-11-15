@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { downloadText, slug } from '../../app/download';
-import { fmtDate } from '../../app/ui';
+import { fmtDate, allergenLine } from '../../app/ui';
 import { computePlan, defaultScenario, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
 import { loadPrivateProfiles } from '../../data/reportsRepo';
 import { BUCKET_LABEL, type Bucket, type PlanResult } from '../../domain/planner';
@@ -110,7 +110,7 @@ function ReportBody({ r, household, generatedAt, mode, names, profiles, stillToB
                 const flags = detailed ? i.flags : publicFlags(i.flags);
                 return (
                   <tr key={i.foodId}>
-                    <td><span className="report-box" aria-hidden /> {i.name}{!detailed && flags.length > 0 && <div className="small muted">{flags.join('; ')}</div>}</td>
+                    <td><span className="report-box" aria-hidden /> {i.name}{!detailed && flags.length > 0 && <div className="small muted">{flags.join('; ')}</div>}{allergenLine(i.allergens) && <div className="small muted">{allergenLine(i.allergens)}</div>}{i.safetyNotes && <div className="small muted">{i.safetyNotes}</div>}</td>
                     <td><strong>{i.packages}</strong> × {i.packageDesc}</td>
                     <td>{num(i.servings)}{i.carbsG !== undefined ? <div className="small muted">~{i.carbsG} g carbs each</div> : null}</td>
                     <td>{i.shelfLife}</td>

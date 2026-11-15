@@ -3,10 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
-import { fmtDate } from '../../app/ui';
-import { setPlanOverride } from '../../data/adminRepo';
+import { allergenLine, fmtDate } from '../../app/ui';
+import { setPlanOverride, setPlanSubstitution } from '../../data/adminRepo';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
-import { BUCKET_LABEL, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
+import { ADMIN_REMOVED, BUCKET_LABEL, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
 import type { FoodItem, Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -95,11 +95,11 @@ export default function Plan() {
               : <DiffView rows={diff ?? []} when={last.snapshot.createdAt} count={saved?.length ?? 0} />}
           </section>
 
-          <ShoppingList r={plan.result} names={names} />
+          <ShoppingList r={plan.result} names={names} foods={plan.input.foods} />
           {plan.result.reserved.length > 0 && <Reserved r={plan.result} names={names} />}
           <Coverage r={plan.result} />
           <WaterFuel r={plan.result} />
-          <Additions r={plan.result} tier={tier} foods={plan.input.foods} names={names} />
+          <Additions r={plan.result} tier={tier} foods={plan.input.foods} names={names} subs={hh?.planSubstitutions ?? {}} />
           <Excluded r={plan.result} names={names} tier={tier} />
           <p className="small muted">
             How foods are scored for this horizon (after safety rules): family acceptance {TIER_WEIGHTS[tier].acceptance}%, nutrition {TIER_WEIGHTS[tier].nutrition}%, ease of preparation {TIER_WEIGHTS[tier].prep}%, storage life {TIER_WEIGHTS[tier].storage}%, cost &amp; space {TIER_WEIGHTS[tier].cost}%, convenience {TIER_WEIGHTS[tier].convenience}%.
@@ -160,7 +160,7 @@ function DiffView({ rows, when, count }: { rows: PlanDiffRow[]; when: string; co
   );
 }
 
-function ShoppingList({ r, names }: { r: PlanResult; names: Map<string, string> }) {
+function ShoppingList({ r, names, foods }: { r: PlanResult; names: Map<string, string>; foods: FoodItem[] }) {
   const buckets = (Object.keys(BUCKET_LABEL) as Bucket[]).filter((b) => r.items.some((i) => i.bucket === b));
   return (
     <section className="card stack">
@@ -169,14 +169,15 @@ function ShoppingList({ r, names }: { r: PlanResult; names: Map<string, string> 
       {buckets.map((b) => (
         <div key={b} className="stack" style={{ gap: 6 }}>
           <h3 style={{ margin: '8px 0 0' }}>{BUCKET_LABEL[b]}</h3>
-          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={i.foodId} i={i} names={names} />)}</div>
+          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={i.foodId} i={i} names={names} r={r} foods={foods} />)}</div>
         </div>
       ))}
     </section>
   );
 }
 
-function ItemRow({ i, names }: { i: PlannedItem; names: Map<string, string> }) {
+function ItemRow({ i, names, r, foods }: { i: PlannedItem; names: Map<string, string>; r: PlanResult; foods: FoodItem[] }) {
+  const [swapping, setSwapping] = useState(false);
   const conf = { high: 'ok', medium: '', low: 'warn' }[i.confidence];
   return (
     <div className="stack" style={{ gap: 6 }}>
@@ -198,6 +199,11 @@ function ItemRow({ i, names }: { i: PlannedItem; names: Map<string, string> }) {
         {i.prepWaterGallons > 0 && <span className="badge">{num(i.prepWaterGallons)} gal water</span>}
       </div>
       {i.flags.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 20, color: 'var(--warn)' }}>{i.flags.map((f) => <li key={f}>{f}</li>)}</ul>}
+      {(allergenLine(i.allergens) || i.safetyNotes) && (
+        <div className="small muted">{allergenLine(i.allergens) && <><strong>Check labels:</strong> {allergenLine(i.allergens)}. </>}{i.safetyNotes}</div>
+      )}
+      {swapping ? <SwapPicker i={i} r={r} foods={foods} names={names} done={() => setSwapping(false)} />
+        : <div><button className="ghost small" onClick={() => setSwapping(true)}>Swap or leave out…</button></div>}
       <details>
         <summary className="small">Per person</summary>
         <div className="row small" style={{ gap: 6, marginTop: 6 }}>
@@ -309,11 +315,48 @@ Add it to the shared supply anyway? It will be flagged on the plan; store it apa
   await setPlanOverride(tier, foodId, true);
 }
 
-function Additions({ r, tier, foods, names }: { r: PlanResult; tier: Tier; foods: FoodItem[]; names: Map<string, string> }) {
+/** Admin swap: replace a planned food with another (in every plan), or leave it out. */
+function SwapPicker({ i, r, foods, names, done }: { i: PlannedItem; r: PlanResult; foods: FoodItem[]; names: Map<string, string>; done: () => void }) {
+  const [to, setTo] = useState('');
+  const inPlan = new Set(r.items.map((x) => x.foodId));
+  const options = foods.filter((f) => f.active && f.id !== i.foodId).sort((a, b) => a.name.localeCompare(b.name));
+  const same = options.filter((f) => f.category === i.category);
+  const other = options.filter((f) => f.category !== i.category);
+  const label = (f: FoodItem) => `${f.name}${inPlan.has(f.id) ? ' (already in plan)' : ''}${r.excluded.some((e) => e.foodId === f.id && e.reasons.length) ? ' (not safe for someone)' : ''}`;
+  async function apply() {
+    if (to === '') return;
+    if (to === 'none') { await setPlanSubstitution(i.foodId, ''); return done(); }
+    const f = foods.find((x) => x.id === to)!;
+    const unsafe = r.excluded.find((e) => e.foodId === to)?.reasons.map((x) => names.get(x.memberId) ?? 'someone').join(', ');
+    if (unsafe && !window.confirm(`${f.name} isn’t safe for ${unsafe}.
+
+Use it instead of ${i.name} anyway? It will be flagged on the plan; store it apart and labeled.`)) return;
+    await setPlanSubstitution(i.foodId, to);
+    done();
+  }
+  return (
+    <div className="row" style={{ gap: 8 }}>
+      <select aria-label={`Swap ${i.name} for`} value={to} onChange={(e) => setTo(e.target.value)} style={{ maxWidth: 360 }}>
+        <option value="">Swap {i.name} for…</option>
+        <option value="none">Nothing: just leave it out</option>
+        <optgroup label="Similar foods">{same.map((f) => <option key={f.id} value={f.id}>{label(f)}</option>)}</optgroup>
+        <optgroup label="Other foods">{other.map((f) => <option key={f.id} value={f.id}>{label(f)}</option>)}</optgroup>
+      </select>
+      <button className="primary" disabled={!to} onClick={apply}>Swap</button>
+      <button className="ghost" onClick={done}>Cancel</button>
+      <span className="small muted">Applies to every plan. Undo it under Admin changes.</span>
+    </div>
+  );
+}
+
+function Additions({ r, tier, foods, names, subs }: { r: PlanResult; tier: Tier; foods: FoodItem[]; names: Map<string, string>; subs: Record<string, string> }) {
   const [pick, setPick] = useState('');
-  const overrides = r.overrides ?? [];
+  const overrides = (r.overrides ?? []).filter((o) => !o.replaces);
+  const swaps = Object.entries(subs);
+  const fname = (id: string) => foods.find((f) => f.id === id)?.name ?? 'a food';
+  const unsafeSwap = (id: string) => r.overrides?.find((o) => o.foodId === id && o.unsafeFor.length);
   const inPlan = new Set(r.items.map((i) => i.foodId));
-  const choices = foods.filter((f) => f.active && !inPlan.has(f.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const choices = foods.filter((f) => f.active && !inPlan.has(f.id) && !(f.id in subs)).sort((a, b) => a.name.localeCompare(b.name));
   const who = (o: NonNullable<PlanResult['overrides']>[number]) => o.unsafeFor.map((x) => names.get(x.memberId) ?? 'someone').join(', ');
   async function add() {
     const f = foods.find((x) => x.id === pick);
@@ -324,8 +367,25 @@ function Additions({ r, tier, foods, names }: { r: PlanResult; tier: Tier; foods
   }
   return (
     <section className="card stack">
-      <h2 style={{ margin: 0 }}>Admin additions</h2>
-      <p className="small muted" style={{ margin: 0 }}>Add a food to the {TIER_LABEL[tier].toLowerCase()} supply list by hand, even if the planner left it out. It gets at least one package; amounts adjust with the rest of the plan. Applies to both cooking scenarios.</p>
+      <h2 style={{ margin: 0 }}>Admin changes</h2>
+      {swaps.length > 0 && (
+        <>
+          <h3 style={{ margin: 0 }}>Swaps (all plans)</h3>
+          <div className="list">
+            {swaps.map(([from, to]) => (
+              <div key={from} className="spread">
+                <div>
+                  <strong>{fname(from)}</strong> → {to ? <strong>{fname(to)}</strong> : <span className="muted">left out</span>}
+                  {to && unsafeSwap(to) && <div className="small" style={{ color: 'var(--danger)' }}>Not safe for {unsafeSwap(to)!.unsafeFor.map((x) => names.get(x.memberId) ?? 'someone').join(', ')}</div>}
+                </div>
+                <button onClick={() => setPlanSubstitution(from, undefined)}>Undo</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <h3 style={{ margin: 0 }}>Additions ({TIER_LABEL[tier].toLowerCase()})</h3>
+      <p className="small muted" style={{ margin: 0 }}>To replace a food, use “Swap or leave out…” on it in the list above. Add a food to the {TIER_LABEL[tier].toLowerCase()} supply list by hand, even if the planner left it out. It gets at least one package; amounts adjust with the rest of the plan. Applies to both cooking scenarios.</p>
       {overrides.length > 0 && (
         <div className="list">
           {overrides.map((o) => (
@@ -374,10 +434,10 @@ function Excluded({ r, names, tier }: { r: PlanResult; names: Map<string, string
         const list = scenario.filter((e) => (e.scenarioOnly ?? '') === why);
         return (
           <details key={why}>
-            <summary>{list.length} food{list.length === 1 ? '' : 's'} not used in this plan: {why === NEEDS_COOKING ? 'they need heat or cooking' : why || 'scenario'}</summary>
+            <summary>{list.length} food{list.length === 1 ? '' : 's'} not used in this plan: {why === NEEDS_COOKING ? 'they need heat or cooking' : why === ADMIN_REMOVED ? 'swapped out or left out by admin' : why || 'scenario'}</summary>
             <div className="list" style={{ marginTop: 8 }}>
               {list.map((e) => (
-                <div key={e.foodId} className="spread"><span className="small">{e.name}</span><button className="ghost small" onClick={() => addAnyway(tier, e.foodId, e.name, '')}>Add anyway</button></div>
+                <div key={e.foodId} className="spread"><span className="small">{e.name}</span>{why === ADMIN_REMOVED ? <span className="small muted">Undo under Admin changes</span> : <button className="ghost small" onClick={() => addAnyway(tier, e.foodId, e.name, '')}>Add anyway</button>}</div>
               ))}
             </div>
           </details>

@@ -57,6 +57,15 @@ export const STRICTNESS: { code: import('../domain/types').Strictness; label: st
 /** Preference-only restriction types: no severity, cross-contact or confirmation. */
 export const isPreferenceOnly = (t: RestrictionType) => t === 'dislike';
 
+/** "Contains wheat, milk · May contain egg" for a planned item (empty if none listed). */
+export function allergenLine(a?: { contains: string[]; mayContain: string[] }): string {
+  if (!a) return '';
+  const parts: string[] = [];
+  if (a.contains.length) parts.push(`Contains ${a.contains.map(subjectLabel).join(', ')}`);
+  if (a.mayContain.length) parts.push(`May contain ${a.mayContain.map(subjectLabel).join(', ')}`);
+  return parts.join(' · ');
+}
+
 export function subjectLabel(subject: string): string {
   return (
     ALLERGENS.find((a) => a.code === subject)?.label ??

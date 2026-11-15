@@ -138,6 +138,18 @@ describe('catalog upgrade', () => {
     expect((await db.foods.get('tuna-canned'))?.name).toBe('Our tuna');
     expect((await db.foods.get('glucose-tabs'))?.tags).toContain('rapid-carb');
   });
+  it('retires untouched freeze-dried meal entries replaced by generic cans, but keeps admin-edited ones', async () => {
+    const seed = buildSeedCatalog()[0];
+    await db.foods.bulkPut([
+      { ...seed, id: 'fd-chili', name: 'Freeze-dried chili / beef meal', revision: 1, active: true },
+      { ...seed, id: 'fd-chicken-rice', name: 'Our chicken & rice', revision: 2, active: true },
+    ]);
+    await db.meta.put({ key: 'catalogVersion', value: 5 });
+    await ensureInitialized(db);
+    expect((await db.foods.get('fd-chili'))?.active).toBe(false);
+    expect((await db.foods.get('fd-chicken-rice'))?.active).toBe(true);
+    expect((await db.foods.get('fd-entree'))?.active).toBe(true);
+  });
   it('every seed entry has a carb estimate', () => {
     expect(buildSeedCatalog().filter((f) => f.nutrition.carbsG === undefined).map((f) => f.id)).toEqual([]);
   });

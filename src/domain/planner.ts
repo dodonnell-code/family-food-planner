@@ -14,6 +14,7 @@ import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, Plannin
 
 export const ENGINE_VERSION = 'engine-4';
 export const NEEDS_COOKING = 'Needs heat or cooking';
+export const ADMIN_REMOVED = 'Swapped out or left out by admin';
 /** Default cap on canned food in long-term plans with cooking (% of calories). */
 export const LONG_TERM_CANNED_MAX_PERCENT = 20;
 
@@ -57,6 +58,8 @@ export interface PlanInput {
   foods: FoodItem[];
   /** Admin override: always include these foods, even if the planner would leave them out. */
   include?: ID[];
+  /** Admin swaps (all plans): food → replacement, or '' to leave it out. */
+  substitutions?: Record<ID, ID | ''>;
   /** The next-smaller plan. Plans are nested: everything in it counts toward this one, and
    *  this plan only adds what's still needed on top. */
   base?: PlanResult;
@@ -67,6 +70,8 @@ export interface PlanOverride {
   name: string;
   /** People it isn't safe for (empty when it was only left out by choice). */
   unsafeFor: ExcludedFood['reasons'];
+  /** Set when it's in the plan as a swap for these foods (rather than an addition). */
+  replaces?: { foodId: ID; name: string }[];
 }
 
 export interface MemberVerdict {
@@ -100,6 +105,9 @@ export interface PlannedItem {
   confidence: 'high' | 'medium' | 'low';
   counts: { eligible: number; liked: number; neutral: number; disliked: number; unknown: number };
   verdicts: MemberVerdict[];
+  /** Allergens on the generic catalog entry, and its label/safety note, to check when buying. */
+  allergens?: { contains: string[]; mayContain: string[] };
+  safetyNotes?: string;
   /** How much of this item comes from the smaller plan this one builds on. */
   fromBase?: { tier: Tier; days: number; packages: number };
   volumeL?: number;
@@ -311,8 +319,13 @@ export function buildPlan(input: PlanInput): PlanResult {
   const warnings: string[] = [];
   const foods = input.foods.filter((f) => f.active).sort((a, b) => a.id.localeCompare(b.id));
   const nameOf = (id: ID) => members.find((m) => m.id === id)?.name ?? 'Someone';
-  const forced = new Set(input.include ?? []);
+  const subs = input.substitutions ?? {};
+  // Replacement food → the foods it replaces.
+  const replacing = new Map<ID, ID[]>();
+  for (const [from, to] of Object.entries(subs)) if (to && to !== from) replacing.set(to, [...(replacing.get(to) ?? []), from]);
+  const forced = new Set([...(input.include ?? []), ...replacing.keys()].filter((id) => !(id in subs)));
   const overrides: PlanOverride[] = [];
+  const foodName = (id: ID) => input.foods.find((f) => f.id === id)?.name ?? 'a food';
   // Food from the smaller plan this one builds on is already counted, so it always stays.
   const carried = new Map((input.base?.items ?? []).map((i) => [i.foodId, i]));
   const carriedUnsafe = new Map<ID, ExcludedFood['reasons']>();
@@ -334,7 +347,12 @@ export function buildPlan(input: PlanInput): PlanResult {
         return { memberId: m.id, reasons: r };
       })
       .filter((x) => x.reasons.length);
-    if (forced.has(f.id)) { overrides.push({ foodId: f.id, name: f.name, unsafeFor: reasons }); eligible.push(f); continue; }
+    if (f.id in subs) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: ADMIN_REMOVED }); continue; }
+    if (forced.has(f.id)) {
+      const rep = replacing.get(f.id);
+      overrides.push({ foodId: f.id, name: f.name, unsafeFor: reasons, replaces: rep?.map((id) => ({ foodId: id, name: foodName(id) })) });
+      eligible.push(f); continue;
+    }
     if (carried.has(f.id)) { if (reasons.length) carriedUnsafe.set(f.id, reasons); eligible.push(f); continue; }
     if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
     if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: NEEDS_COOKING }); continue; }
@@ -510,7 +528,8 @@ export function buildPlan(input: PlanInput): PlanResult {
         if (!forced.has(f.id)) for (const r of carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override in the ${baseInfo.days}-day plan: store it apart and labeled.`);
       }
       if (forced.has(f.id)) {
-        why.unshift('Added by admin');
+        const rep = replacing.get(f.id);
+        why.unshift(rep && !(input.include ?? []).includes(f.id) ? `Admin swap for ${rep.map(foodName).join(', ')}` : 'Added by admin');
         const o = overrides.find((y) => y.foodId === f.id);
         for (const r of o?.unsafeFor ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override: store it apart and labeled.`);
         if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) flags.push('Needs heat or cooking, but this is a no-cook plan');
@@ -522,7 +541,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         calories: Math.round(servings * f.nutrition.caloriesPerServing),
         packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,
         prepWaterGallons: round1((servings * f.prep.waterCupsPerServing) / 16),
-        needsFuel: f.prep.needsFuel, carbsG: f.nutrition.carbsG, why, flags, fromBase: bi && baseInfo ? { ...baseInfo, packages: bi.packages } : undefined, confidence: x.confidence, counts: x.counts,
+        needsFuel: f.prep.needsFuel, carbsG: f.nutrition.carbsG, why, flags, allergens: { contains: f.allergens.contains, mayContain: f.allergens.mayContain ?? [] }, safetyNotes: f.safetyNotes, fromBase: bi && baseInfo ? { ...baseInfo, packages: bi.packages } : undefined, confidence: x.confidence, counts: x.counts,
         verdicts: x.verdicts.map(({ value: _v, ...v }) => v),
         volumeL: f.package.volumeL !== undefined ? round1(packages * f.package.volumeL) : undefined,
         cost: f.priceEstimate !== undefined ? Math.round(packages * f.priceEstimate * 100) / 100 : undefined,

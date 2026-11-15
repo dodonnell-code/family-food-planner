@@ -41,6 +41,8 @@ export interface Household {
   };
   /** Foods the admin has added to a plan by hand (per horizon), even if the planner left them out. */
   planOverrides?: Partial<Record<Tier, ID[]>>;
+  /** Admin swaps for every plan: food → replacement food, or '' to just leave it out. */
+  planSubstitutions?: Record<ID, ID | ''>;
 }
 
 // ---------- Members ----------

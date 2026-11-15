@@ -112,6 +112,20 @@ export async function setPlanOverride(tier: Tier, foodId: ID, include: boolean, 
   await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planOverrides: before }, after: { planOverrides } });
 }
 
+/** Admin swap for every plan: replace a food with another ('' = just leave it out), or undo (to = undefined). */
+export async function setPlanSubstitution(from: ID, to: ID | '' | undefined, database: PlannerDB = defaultDb) {
+  const hh = await database.households.toCollection().first();
+  if (!hh) throw new Error('Household not initialized');
+  if (to === from) throw new Error('Choose a different food');
+  const before = hh.planSubstitutions ?? {};
+  const planSubstitutions = { ...before };
+  if (to === undefined) delete planSubstitutions[from]; else planSubstitutions[from] = to;
+  await database.households.update(hh.id, { planSubstitutions });
+  const [a, b] = await Promise.all([database.foods.get(from), to ? database.foods.get(to) : undefined]);
+  await audit(to === undefined ? 'plan.swap.undo' : 'plan.swap', { foodId: from }, `${a?.name ?? from} → ${to === undefined ? '(undo)' : b?.name ?? 'left out'}`, database);
+  await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planSubstitutions: before }, after: { planSubstitutions } });
+}
+
 // ---------------- Custom profile fields ----------------
 export async function saveFieldDefinition(input: Omit<CustomFieldDefinition, 'id'> & { id?: ID }, database: PlannerDB = defaultDb): Promise<CustomFieldDefinition> {
   if (!input.label.trim()) throw new Error('Label is required');

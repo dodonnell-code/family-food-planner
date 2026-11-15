@@ -264,3 +264,33 @@ describe('planner: nested supplies', () => {
     expect(canned / l.plannedCalories).toBeLessThan(0.3);
   });
 });
+
+describe('planner: admin swaps', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+  it('replaces a food with the admin’s choice in every plan, and can leave one out', () => {
+    const chain = { days: { short: 3, medium: 14, long: 90 } };
+    const before = buildNestedPlan(input(fam(), 'long'), chain);
+    const target = before.items.find((i) => i.foodId === 'sunbutter') ?? before.items.find((i) => i.bucket === 'snacks')!;
+    const replacement = foods.find((f) => f.active && f.category === 'fat-snack' && !before.items.some((i) => i.foodId === f.id) && f.nutrition.caloriesPerServing > 0 && f.allergens.contains.length === 0)!;
+    const subs = { [target.foodId]: replacement.id, 'canned-peaches': '' };
+    for (const tier of ['short', 'medium', 'long'] as Tier[]) {
+      const p = buildNestedPlan(input(fam(), tier, { substitutions: subs }), chain);
+      expect(p.items.some((i) => i.foodId === target.foodId)).toBe(false);
+      expect(p.items.some((i) => i.foodId === 'canned-peaches')).toBe(false);
+      expect(p.excluded.find((e) => e.foodId === target.foodId)?.scenarioOnly).toMatch(/admin/);
+      if (tier === 'long') {
+        const r = p.items.find((i) => i.foodId === replacement.id)!;
+        expect(r.why).toContain(`Admin swap for ${target.name}`);
+        expect(p.overrides?.find((o) => o.foodId === replacement.id)?.replaces).toEqual([{ foodId: target.foodId, name: target.name }]);
+      }
+    }
+  });
+
+  it('lists allergens to check on each item, and the generic freeze-dried entrées say to check every can', () => {
+    const p = buildPlan(input(fam(), 'long'));
+    const fd = p.items.find((i) => i.foodId === 'fd-entree')!;
+    expect(fd).toBeDefined();
+    expect(fd.allergens).toEqual({ contains: ['wheat', 'milk', 'soy'], mayContain: ['egg'] });
+    expect(fd.safetyNotes).toMatch(/Check every can/);
+  });
+});
