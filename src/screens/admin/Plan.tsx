@@ -3,12 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
-import { allergenLine, fmtDate } from '../../app/ui';
-import { setPlanOverride, setPlanSubstitution } from '../../data/adminRepo';
+import { allergenLine, fmtDate, nutritionFacts } from '../../app/ui';
+import { setHandPick, setPlanOverride, setPlanPicks, setPlanQuantity, setPlanSubstitution } from '../../data/adminRepo';
+import { CATEGORY_LABELS } from './Catalog';
 import { FamilyRequests } from './Requests';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
 import { ADMIN_REMOVED, BUCKET_LABEL, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
-import type { FoodItem, Scenario, Tier } from '../../domain/types';
+import type { FoodCategory, FoodItem, Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
 const SCENARIOS: Scenario[] = ['no-cook', 'limited-cook'];
@@ -73,7 +74,12 @@ export default function Plan() {
         <div className="notice">No active members yet. <Link to="/admin/members">Add your family</Link> to get a plan.</div>
       ) : (
         <>
-          <CalorieGoal r={plan.result} />
+          <div className="row" role="radiogroup" aria-label="How foods are chosen">
+            <span className="small muted">Foods:</span>
+            <button role="radio" aria-checked={!plan.result.handPick} className={!plan.result.handPick ? 'primary' : ''} style={{ minHeight: 40 }} onClick={() => setHandPick(tier, false)}>Planner chooses</button>
+            <button role="radio" aria-checked={!!plan.result.handPick} className={plan.result.handPick ? 'primary' : ''} style={{ minHeight: 40 }} onClick={() => setHandPick(tier, true)}>I pick</button>
+          </div>
+          <CalorieGoal r={plan.result} tier={tier} />
           <Summary r={plan.result} />
           <p className="small muted" style={{ margin: 0 }}>
             {plan.result.base
@@ -97,6 +103,7 @@ export default function Plan() {
               : <DiffView rows={diff ?? []} when={last.snapshot.createdAt} count={saved?.length ?? 0} />}
           </section>
 
+          {plan.result.handPick && <HandPicker r={plan.result} tier={tier} foods={plan.input.foods} names={names} picks={hh?.planOverrides?.[tier] ?? []} />}
           <ShoppingList r={plan.result} names={names} foods={plan.input.foods} />
           {plan.result.reserved.length > 0 && <Reserved r={plan.result} names={names} />}
           <Coverage r={plan.result} />
@@ -178,14 +185,14 @@ function ShoppingList({ r, names, foods }: { r: PlanResult; names: Map<string, s
       {buckets.map((b) => (
         <div key={b} className="stack" style={{ gap: 6 }}>
           <h3 style={{ margin: '8px 0 0' }}>{BUCKET_LABEL[b]}</h3>
-          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={i.foodId} i={i} names={names} r={r} foods={foods} />)}</div>
+          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={i.foodId} i={i} names={names} r={r} foods={foods} tier={r.tier} />)}</div>
         </div>
       ))}
     </section>
   );
 }
 
-function ItemRow({ i, names, r, foods }: { i: PlannedItem; names: Map<string, string>; r: PlanResult; foods: FoodItem[] }) {
+function ItemRow({ i, names, r, foods, tier }: { i: PlannedItem; names: Map<string, string>; r: PlanResult; foods: FoodItem[]; tier: Tier }) {
   const [swapping, setSwapping] = useState(false);
   const conf = { high: 'ok', medium: '', low: 'warn' }[i.confidence];
   return (
@@ -208,11 +215,19 @@ function ItemRow({ i, names, r, foods }: { i: PlannedItem; names: Map<string, st
         {i.prepWaterGallons > 0 && <span className="badge">{num(i.prepWaterGallons)} gal water</span>}
       </div>
       {i.flags.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 20, color: 'var(--warn)' }}>{i.flags.map((f) => <li key={f}>{f}</li>)}</ul>}
+      <NutritionLine i={i} foods={foods} />
       {(allergenLine(i.allergens) || i.safetyNotes) && (
         <div className="small muted">{allergenLine(i.allergens) && <><strong>Check labels:</strong> {allergenLine(i.allergens)}. </>}{i.safetyNotes}</div>
       )}
       {swapping ? <SwapPicker i={i} r={r} foods={foods} names={names} done={() => setSwapping(false)} />
-        : <div><button className="ghost small" onClick={() => setSwapping(true)}>Swap or leave out…</button></div>}
+        : (
+          <div className="row" style={{ gap: 6 }}>
+            {r.handPick && !i.fromBase
+              ? <button className="ghost small" onClick={() => setPlanOverride(tier, i.foodId, false)}>Remove</button>
+              : <button className="ghost small" onClick={() => setSwapping(true)}>Swap or leave out…</button>}
+            <QtyControl key={`${i.foodId}:${i.packages}`} i={i} tier={tier} />
+          </div>
+        )}
       <details>
         <summary className="small">Per person</summary>
         <div className="row small" style={{ gap: 6, marginTop: 6 }}>
@@ -345,26 +360,131 @@ function WaterFuel({ r }: { r: PlanResult }) {
 }
 
 /** Prominent alert when the plan can't reach the calorie goal, and what was added to get there. */
-function CalorieGoal({ r }: { r: PlanResult }) {
+function CalorieGoal({ r, tier }: { r: PlanResult; tier: Tier }) {
   const t = r.topUp;
   if (!r.people || !t) return null;
   if (t.shortCalories > 0) {
     const days = r.dailyCaloriesTotal ? Math.round((t.shortCalories / r.dailyCaloriesTotal) * 10) / 10 : 0;
     return (
-      <div className="notice danger stack" style={{ gap: 6, fontSize: '1.05rem' }} role="alert">
+      <div className="notice danger stack" style={{ gap: 8, fontSize: '1.05rem' }} role="alert">
         <strong>This plan is {num(t.shortCalories)} calories short of the goal (about {num(days)} days of food for everyone).</strong>
-        <span>There aren’t enough safe foods the family accepts to fill it. Add foods under “Admin changes” or “Left out” below, or add new foods to the catalog.</span>
+        <span>{r.handPick ? 'Pick more foods below, or raise the amounts of foods you picked.' : 'Add foods from the suggestions, or raise the amounts of foods in the plan.'}</span>
+        <Suggestions r={r} tier={tier} />
       </div>
     );
   }
-  if (!t.added.length && !t.increased.length) return null;
+  if (!t.increased.length) return null;
   return (
     <div className="notice stack" style={{ gap: 6 }} role="status">
-      <strong>The usual picks fell short of the calorie goal, so the plan made up the difference.</strong>
-      {t.added.length > 0 && <span>Added: {t.added.join(', ')}.</span>}
-      {t.increased.length > 0 && <span>Increased: {t.increased.join(', ')}.</span>}
-      <span className="small muted">Swap or leave out any of them on its row below.</span>
+      <strong>To reach the calorie goal, the plan increased: {t.increased.join(', ')}.</strong>
+      <span className="small muted">No new foods were added. Change any amount on its row below.</span>
     </div>
+  );
+}
+
+/** Foods the admin could add, one at a time. */
+function Suggestions({ r, tier, only }: { r: PlanResult; tier: Tier; only?: (n: NonNullable<PlanResult['notChosen']>[number]) => boolean }) {
+  const list = (only ? (r.notChosen ?? []).filter(only).slice(0, 8) : r.topUp?.suggestions ?? []);
+  if (!list.length) return <span className="small muted">No suggestions: every safe food the family accepts is already in. Add new foods in the Catalog.</span>;
+  return (
+    <div className="list" style={{ background: 'var(--surface, transparent)' }}>
+      {list.map((n) => (
+        <div key={n.foodId} className="spread">
+          <div>
+            <strong>{n.name}</strong> <span className="small muted">· {BUCKET_LABEL[n.bucket]}</span>
+            <div className="small muted">{n.reason}</div>
+          </div>
+          <button className="small" onClick={() => setPlanOverride(tier, n.foodId, true)}>Add</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Nutrition facts per serving, or a note that they aren't available (with a link to enter them). */
+function NutritionLine({ i, foods }: { i: PlannedItem; foods: FoodItem[] }) {
+  const f = foods.find((x) => x.id === i.foodId);
+  if (!f) return null;
+  const n = nutritionFacts(f.nutrition);
+  return (
+    <div className="small">
+      <strong>Nutrition</strong> <span className="muted">per {f.nutrition.servingDesc}:</span> {n.text}.
+      {n.missing.length > 0 && <> <span style={{ color: 'var(--warn)' }}>{n.missing.length === 7 ? 'Other nutrition facts not available' : `Not available: ${n.missing.join(', ')}`}.</span> <Link to={`/admin/catalog/${f.id}`}>Enter them</Link></>}
+      {f.nutrition.source && <span className="muted"> {f.nutrition.source}</span>}
+    </div>
+  );
+}
+
+/** Change how many packages of a food this plan stores. */
+function QtyControl({ i, tier }: { i: PlannedItem; tier: Tier }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(String(i.packages));
+  const [err, setErr] = useState('');
+  const set = i.why.some((w) => w.startsWith('Amount set by admin'));
+  async function save() {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0) { setErr('Enter 0 or more'); return; }
+    await setPlanQuantity(tier, i.foodId, Math.round(n));
+    setEditing(false);
+  }
+  if (!editing) return (
+    <>
+      <button className="ghost small" onClick={() => { setVal(String(i.packages)); setErr(''); setEditing(true); }}>Change amount</button>
+      {set && <button className="ghost small" onClick={() => setPlanQuantity(tier, i.foodId, undefined)}>Use planner’s amount</button>}
+    </>
+  );
+  return (
+    <span className="row" style={{ gap: 6 }}>
+      <label className="small">Packages <input type="number" min={0} step={1} inputMode="numeric" value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} aria-label={`Packages of ${i.name}`} /></label>
+      <span className="small muted">× {i.packageDesc || 'package'}</span>
+      <button className="primary small" onClick={save}>Save</button>
+      <button className="ghost small" onClick={() => setEditing(false)}>Cancel</button>
+      {i.fromBase && <span className="small muted">At least {i.fromBase.packages} (the {i.fromBase.days}-day supply’s amount).</span>}
+      {err && <span className="small" style={{ color: 'var(--danger)' }}>{err}</span>}
+    </span>
+  );
+}
+
+/** Hand-picked plan: tick foods from the whole catalog. */
+function HandPicker({ r, tier, foods, names, picks }: { r: PlanResult; tier: Tier; foods: FoodItem[]; names: Map<string, string>; picks: string[] }) {
+  const [q, setQ] = useState('');
+  // Open at first when nothing is picked yet; after that, stays as the admin leaves it.
+  const [open, setOpen] = useState(picks.length === 0);
+  const picked = new Set(picks);
+  const active = foods.filter((f) => f.active && (!q || f.name.toLowerCase().includes(q.toLowerCase())));
+  const cats = (Object.keys(CATEGORY_LABELS) as FoodCategory[]).filter((c) => active.some((f) => f.category === c));
+  const unsafe = (id: string) => r.excluded.find((e) => e.foodId === id && e.reasons.length)?.reasons.map((x) => names.get(x.memberId) ?? 'someone').join(', ');
+  const cook = (id: string) => r.excluded.some((e) => e.foodId === id && e.scenarioOnly === NEEDS_COOKING);
+  const fromCarry = new Set(r.items.filter((i) => i.fromBase).map((i) => i.foodId));
+  async function toggle(f: FoodItem, on: boolean) {
+    if (on) { await addAnyway(tier, f.id, f.name, unsafe(f.id) ?? ''); return; }
+    await setPlanOverride(tier, f.id, false);
+  }
+  return (
+    <details className="card stack" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary><h2 style={{ margin: 0, display: 'inline' }}>Pick foods for this plan</h2> <span className="badge">{picks.length} picked</span></summary>
+      <p className="small muted" style={{ margin: '8px 0' }}>Tick what you want. The plan works out how much of each to store for everyone (change any amount on its row), and warns you if it falls short of the calorie goal. Foods marked “planner pick” are what the planner would have chosen.</p>
+      <div className="row" style={{ gap: 8 }}>
+        <input type="search" placeholder="Search foods" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 260 }} aria-label="Search foods" />
+        <button className="small" onClick={() => setPlanPicks(tier, [...new Set([...picks, ...(r.plannerPicks ?? [])])])}>Add the planner’s picks</button>
+        {picks.length > 0 && <button className="ghost small" onClick={() => window.confirm('Clear every pick from this plan?') && setPlanPicks(tier, [])}>Clear all</button>}
+      </div>
+      {cats.map((c) => (
+        <div key={c} className="stack" style={{ gap: 4 }}>
+          <h3 style={{ margin: '10px 0 0' }}>{CATEGORY_LABELS[c]}</h3>
+          {active.filter((f) => f.category === c).sort((a, b) => a.name.localeCompare(b.name)).map((f) => (
+            <label key={f.id} className="row" style={{ gap: 10, alignItems: 'center', minHeight: 40 }}>
+              <input type="checkbox" checked={picked.has(f.id)} disabled={fromCarry.has(f.id)} onChange={(e) => toggle(f, e.target.checked)} style={{ width: 22, height: 22 }} />
+              <span>{f.name}</span>
+              {r.plannerPicks?.includes(f.id) && <span className="badge ok">planner pick</span>}
+              {unsafe(f.id) && <span className="badge danger">not safe for {unsafe(f.id)}</span>}
+              {cook(f.id) && <span className="badge warn">needs cooking</span>}
+              {fromCarry.has(f.id) && <span className="badge">in the smaller supply</span>}
+            </label>
+          ))}
+        </div>
+      ))}
+    </details>
   );
 }
 
@@ -444,6 +564,14 @@ function Additions({ r, tier, foods, names, subs }: { r: PlanResult; tier: Tier;
           </div>
         </>
       )}
+      {swaps.some(([, to]) => !to) && !r.handPick && (
+        <>
+          <h3 style={{ margin: 0 }}>Suggestions to replace what you took out</h3>
+          <p className="small muted" style={{ margin: 0 }}>Taking a food out doesn’t add anything new by itself; the foods still in the plan cover its calories. Add any of these one at a time.</p>
+          <Suggestions r={r} tier={tier} only={(n) => swaps.some(([from, to]) => !to && foods.find((f) => f.id === from)?.category === foods.find((f) => f.id === n.foodId)?.category) && !n.reason.includes('like it')} />
+        </>
+      )}
+      {!r.handPick && <>
       <h3 style={{ margin: 0 }}>Additions ({TIER_LABEL[tier].toLowerCase()})</h3>
       <p className="small muted" style={{ margin: 0 }}>To replace a food, use “Swap or leave out…” on it in the list above. Add a food to the {TIER_LABEL[tier].toLowerCase()} supply list by hand, even if the planner left it out. It gets at least one package; amounts adjust with the rest of the plan. Applies to both cooking scenarios.</p>
       {overrides.length > 0 && (
@@ -466,6 +594,7 @@ function Additions({ r, tier, foods, names, subs }: { r: PlanResult; tier: Tier;
         </select>
         <button className="primary" disabled={!pick} onClick={add}>Add to plan</button>
       </div>
+      </>}
     </section>
   );
 }
@@ -478,7 +607,7 @@ function Excluded({ r, names, tier }: { r: PlanResult; names: Map<string, string
     <section className="card stack" id="left-out">
       <h2 style={{ margin: 0 }}>Left out</h2>
       <p className="small muted" style={{ margin: 0 }}>Survey foods that aren’t in this plan, and why. Tap Add to put one in.</p>
-      {notChosen.length > 0 && (
+      {notChosen.length > 0 && !r.handPick && (
         <details>
           <summary>{notChosen.length} safe food{notChosen.length === 1 ? '' : 's'} not chosen (variety, ratings or score)</summary>
           <div className="list" style={{ marginTop: 8 }}>

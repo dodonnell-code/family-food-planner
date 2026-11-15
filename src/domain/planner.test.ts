@@ -439,12 +439,12 @@ describe('planner: baking supplies & seasonings', () => {
 describe('planner: calorie goal and foods not chosen', () => {
   const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
 
-  it('reaches the calorie goal even with few foods, and says what it added or increased', () => {
+  it('reaches the calorie goal by increasing the foods it has, without adding new ones', () => {
     const few = ['white-rice', 'pinto-beans-dry', 'peanut-butter'].map(food).filter(Boolean);
     const p = buildPlan(input(fam(), 'medium', { foods: few }));
     expect(p.plannedCalories).toBeGreaterThanOrEqual(p.targetCalories);
     expect(p.topUp!.shortCalories).toBe(0);
-    expect(p.topUp!.increased.length + p.topUp!.added.length).toBeGreaterThan(0);
+    expect(p.topUp!.increased.length).toBeGreaterThan(0);
   });
 
   it('reports the gap when there is nothing safe to fill it', () => {
@@ -468,5 +468,50 @@ describe('planner: calorie goal and foods not chosen', () => {
     const p = buildPlan(input(fam().map((m) => ({ ...m, ratings: { 'sardines-canned': 1 as RatingCode } })), 'medium'));
     expect(p.items.some((i) => i.foodId === 'sardines-canned')).toBe(false);
     expect(p.notChosen!.find((x) => x.foodId === 'sardines-canned')?.reason).toMatch(/like it|rated it low/);
+  });
+});
+
+describe('planner: admin control', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+
+  it('taking a food out adds no new foods; suggestions are offered instead', () => {
+    const before = buildPlan(input(fam(), 'medium'));
+    const out = before.items.find((i) => i.bucket === 'mains')!.foodId;
+    const after = buildPlan(input(fam(), 'medium', { substitutions: { [out]: '' } }));
+    const was = new Set(before.items.map((i) => i.foodId));
+    expect(after.items.map((i) => i.foodId).filter((id) => !was.has(id))).toEqual([]);
+    expect(after.items.some((i) => i.foodId === out)).toBe(false);
+    expect(after.items.length).toBe(before.items.length - 1);
+    expect(after.plannedCalories).toBeGreaterThanOrEqual(after.targetCalories);
+  });
+
+  it('adding a food does not push other foods out', () => {
+    const before = buildPlan(input(fam(), 'medium'));
+    const extra = before.notChosen!.find((n) => n.bucket === 'mains')!.foodId;
+    const after = buildPlan(input(fam(), 'medium', { include: [extra] }));
+    const ids = new Set(after.items.map((i) => i.foodId));
+    for (const i of before.items) expect(ids.has(i.foodId), i.name).toBe(true);
+    expect(ids.has(extra)).toBe(true);
+  });
+
+  it('keeps an amount the admin sets, and does not grow it', () => {
+    const p0 = buildPlan(input(fam(), 'medium'));
+    const it0 = p0.items.find((i) => i.bucket === 'starches')!;
+    const p = buildPlan(input(fam(), 'medium', { quantities: { [it0.foodId]: 1 } }));
+    const it = p.items.find((i) => i.foodId === it0.foodId)!;
+    expect(it.packages).toBe(1);
+    expect(it.why[0]).toBe('Amount set by admin');
+    expect(p.plannedCalories).toBeGreaterThanOrEqual(p.targetCalories);
+  });
+
+  it('hand-picked plans hold only the picks, sized for everyone, and flag a shortfall', () => {
+    const p = buildPlan(input(fam(), 'short', { scenario: 'limited-cook', handPick: true, include: ['white-rice', 'peanut-butter', 'salt'] }));
+    expect(p.items.map((i) => i.foodId).sort()).toEqual(['peanut-butter', 'salt', 'white-rice']);
+    expect(p.plannedCalories).toBeGreaterThanOrEqual(p.targetCalories);
+    expect(p.plannerPicks!.length).toBeGreaterThan(5);
+    const empty = buildPlan(input(fam(), 'short', { handPick: true, include: [] }));
+    expect(empty.items).toEqual([]);
+    expect(empty.topUp!.shortCalories).toBe(empty.targetCalories);
+    expect(empty.topUp!.suggestions.length).toBeGreaterThan(0);
   });
 });

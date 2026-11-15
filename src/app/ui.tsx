@@ -58,6 +58,17 @@ export const STRICTNESS: { code: import('../domain/types').Strictness; label: st
 export const isPreferenceOnly = (t: RestrictionType) => t === 'dislike';
 
 /** "Contains wheat, milk · May contain egg" for a planned item (empty if none listed). */
+/** Nutrition facts per serving, and which ones are missing. */
+export function nutritionFacts(n: { servingDesc: string; caloriesPerServing: number; proteinG?: number; carbsG?: number; fatG?: number; satFatG?: number; fiberG?: number; sugarG?: number; sodiumMg?: number }) {
+  const f = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const all: [string, number | undefined, string][] = [
+    ['protein', n.proteinG, 'g'], ['carbs', n.carbsG, 'g'], ['fat', n.fatG, 'g'], ['sat. fat', n.satFatG, 'g'],
+    ['fiber', n.fiberG, 'g'], ['sugar', n.sugarG, 'g'], ['sodium', n.sodiumMg, 'mg'],
+  ];
+  const have = all.filter(([, v]) => v !== undefined).map(([k, v, u]) => `${k} ${f(v!)} ${u}`);
+  return { text: [`${f(n.caloriesPerServing)} kcal`, ...have].join(' · '), missing: all.filter(([, v]) => v === undefined).map(([k]) => k) };
+}
+
 export function allergenLine(a?: { contains: string[]; mayContain: string[] }): string {
   if (!a) return '';
   const parts: string[] = [];

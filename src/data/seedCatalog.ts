@@ -7,11 +7,12 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v9: full nutrition facts (fat, saturated fat, fiber, sugar, sodium) with their source.
 // v8: baking supplies & seasonings (new 'pantry' group, incl. salt; cooking oil moves there).
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 8;
+export const CATALOG_VERSION = 9;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice'];
@@ -202,6 +203,121 @@ const S: Seed[] = [
   { id: 'vanilla', name: 'Vanilla extract', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tsp', kcal: 12, pkg: '2 oz bottle', servings: 12, volL: 0.1, cost: 3, rot: 1, role: 'staple', use: 0.02, from: 'long' },
 ];
 
+/**
+ * Typical nutrition per serving beyond calories/protein/carbs: [fat g, saturated fat g, fiber g,
+ * sugar g, sodium mg, protein g (only where the seed has none)]. Generic values for this kind of
+ * food, from USDA FoodData Central and common labels. Brands differ: check your label.
+ */
+const NUTRITION: Record<string, number[]> = {
+  'chicken-canned': [2, 0.5, 0, 0, 200],
+  'tuna-canned': [0.5, 0, 0, 0, 180],
+  'tuna-pouch': [1, 0, 0, 0, 300],
+  'salmon-canned': [4, 1, 0, 0, 220],
+  'sardines-canned': [10, 1.5, 0, 0, 300],
+  'beef-jerky': [1, 0.5, 0, 5, 500],
+  'spam-canned': [16, 6, 0, 1, 790],
+  'meat-pouch-rte': [3, 1, 0, 0, 400],
+  'tofu-shelf': [2.5, 0.5, 0, 1, 10],
+  'fd-meat': [2, 0.5, 0, 0, 250],
+  'egg-powder': [5.5, 1.5, 0, 0, 70],
+  'black-beans-canned': [0.5, 0, 7, 0, 400],
+  'chickpeas-canned': [2, 0, 5, 1, 300],
+  'kidney-beans-canned': [0.5, 0, 6, 1, 350],
+  'refried-beans-canned': [1.5, 0.5, 6, 1, 500],
+  'lentils-canned': [0.5, 0, 6, 1, 350],
+  'lentils-dry': [0.5, 0, 5, 1, 5],
+  'split-peas-dry': [0.5, 0, 12, 4, 7],
+  'pinto-beans-dry': [0.5, 0, 7, 1, 5],
+  'crackers': [3, 0.5, 0.5, 1, 140, 1],
+  'granola': [9, 2, 4, 12, 50],
+  'cereal': [1, 0, 3, 5, 170],
+  'tortillas-shelf': [3.5, 1.5, 1, 1, 350],
+  'rice-pouch-rte': [4, 0.5, 1, 0, 400],
+  'potato-flakes': [0, 0, 1, 1, 25],
+  'white-rice': [0, 0, 0.5, 0, 0],
+  'pasta-dry': [1, 0, 2, 1, 0],
+  'oats-instant': [2, 0.5, 3, 12, 200],
+  'oats-rolled': [2.5, 0.5, 4, 1, 0],
+  'cornmeal': [1, 0, 2, 0, 0],
+  'flour-wheat': [0.5, 0, 1, 0, 0],
+  'wheat-berries': [1, 0, 6, 0, 0],
+  'pretzels': [1, 0, 1, 1, 450],
+  'fruit-cups': [0, 0, 1.5, 16, 10, 0.5],
+  'applesauce-pouch': [0, 0, 1, 11, 0, 0],
+  'canned-peaches': [0, 0, 1.5, 13, 5, 0.5],
+  'raisins': [0, 0, 2, 26, 10, 1],
+  'fd-fruit': [0, 0, 2, 9, 0, 0.5],
+  'canned-pineapple': [0, 0, 1, 16, 0, 0.5],
+  'green-beans-canned': [0, 0, 2, 1, 350, 1],
+  'corn-canned': [1, 0, 2, 4, 250, 2],
+  'carrots-canned': [0, 0, 2, 3, 300, 1],
+  'tomato-sauce': [0, 0, 2, 5, 500, 1.5],
+  'veg-pouch': [1, 0, 2, 3, 300, 2],
+  'fd-corn-peas': [1, 0, 4, 5, 10],
+  'fd-veg': [0, 0, 2, 3, 40, 1.5],
+  'chili-canned': [11, 4, 7, 3, 1000],
+  'veg-chili-canned': [1, 0, 10, 6, 800],
+  'beef-stew-canned': [11, 4.5, 3, 2, 900],
+  'soup-rte': [3, 1, 2, 3, 800],
+  'ravioli-canned': [7, 3, 3, 9, 900],
+  'curry-pouch': [8, 3, 6, 5, 600],
+  'meal-pouch-rte': [11, 4, 4, 4, 900],
+  'fd-entree': [6, 2, 3, 4, 800],
+  'fd-meal': [7, 2.5, 3, 4, 850],
+  'fd-breakfast': [13, 5, 1, 2, 600],
+  'soup-mix-dry': [3, 1, 2, 3, 800],
+  'mac-cheese-cup': [11, 4, 1, 6, 600],
+  'peanut-butter': [16, 3, 2, 3, 140],
+  'pb-packets': [16, 3, 2, 3, 140],
+  'sunbutter': [16, 1.5, 2, 4, 65],
+  'mixed-nuts': [15, 2, 2, 1, 90],
+  'trail-mix': [10, 2.5, 2, 11, 40],
+  'granola-bars': [7, 1, 2, 12, 150],
+  'protein-bars': [7, 3, 4, 6, 200],
+  'cooking-oil': [14, 2, 0, 0, 0, 0],
+  'hard-candy': [0, 0, 0, 10, 5, 0],
+  'glucose-tabs': [0, 0, 0, 14, 0, 0],
+  'glucose-gel': [0, 0, 0, 15, 30, 0],
+  'shelf-milk': [8, 5, 0, 12, 105],
+  'shelf-plant-milk': [4.5, 0.5, 1, 7, 150],
+  'powdered-milk': [0, 0, 0, 12, 125],
+  'juice-boxes': [0, 0, 0, 20, 15, 0],
+  'electrolyte-mix': [0, 0, 0, 9, 250, 0],
+  'coffee-tea': [0, 0, 0, 0, 5, 0],
+  'cocoa-mix': [3, 2, 1, 17, 180, 2],
+  'salt': [0, 0, 0, 0, 2300, 0],
+  'black-pepper': [0, 0, 0.2, 0, 0, 0],
+  'sugar': [0, 0, 0, 12.5, 0, 0],
+  'bouillon': [0.5, 0, 0, 0, 900, 0.5],
+  'honey': [0, 0, 0, 17, 1, 0],
+  'garlic-powder': [0, 0, 0, 0, 0, 0],
+  'onion-powder': [0, 0, 0, 0, 0, 0],
+  'chili-powder': [0.2, 0, 0.5, 0, 40, 0],
+  'cumin': [0.2, 0, 0, 0, 2, 0],
+  'italian-seasoning': [0, 0, 0, 0, 0, 0],
+  'cinnamon': [0, 0, 0.5, 0, 0, 0],
+  'soy-sauce': [0, 0, 0, 0, 900, 1],
+  'hot-sauce': [0, 0, 0, 0, 100, 0],
+  'vinegar': [0, 0, 0, 0, 0, 0],
+  'baking-powder': [0, 0, 0, 0, 480, 0],
+  'baking-soda': [0, 0, 0, 0, 1260, 0],
+  'yeast': [0.5, 0, 2, 0, 4, 3],
+  'cornstarch': [0, 0, 0, 0, 1, 0],
+  'vanilla': [0, 0, 0, 0.5, 0, 0],
+};
+/** Foods whose values vary a lot between brands or flavors (assorted meals, bars, cereals). */
+const ROUGH_NUTRITION = new Set(['cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
+const NUTRITION_SOURCE = 'Typical values for this kind of food (USDA FoodData Central and common labels). Brands differ; check your label.';
+const ROUGH_SOURCE = 'Rough average across brands and flavors; varies a lot. Enter your product’s label values for accuracy.';
+
+function nutritionFor(s: Seed): FoodItem['nutrition'] {
+  const n = NUTRITION[s.id];
+  const base: FoodItem['nutrition'] = { servingDesc: s.serving, caloriesPerServing: s.kcal, proteinG: s.protein, carbsG: CARBS_G[s.id] };
+  if (!n) return base;
+  const [fatG, satFatG, fiberG, sugarG, sodiumMg, protein] = n;
+  return { ...base, proteinG: s.protein ?? protein, fatG, satFatG, fiberG, sugarG, sodiumMg, source: ROUGH_NUTRITION.has(s.id) ? ROUGH_SOURCE : NUTRITION_SOURCE };
+}
+
 export function buildSeedCatalog(): FoodItem[] {
   return S.map((s) => {
     const noHeat = s.prep === 'ready-to-eat' || s.prep === 'add-cold-water';
@@ -229,7 +345,7 @@ export function buildSeedCatalog(): FoodItem[] {
         sourceDate: s.sl.sourceDate,
         assumptions: s.sl.assumptions,
       },
-      nutrition: { servingDesc: s.serving, caloriesPerServing: s.kcal, proteinG: s.protein, carbsG: CARBS_G[s.id] },
+      nutrition: nutritionFor(s),
       package: { description: s.pkg, servingsPerPackage: s.servings, volumeL: s.volL },
       relativeCost: s.cost ?? 2,
       rotationPriority: s.rot ?? (s.sl.max <= 18 ? 3 : s.sl.max <= 60 ? 2 : 1),

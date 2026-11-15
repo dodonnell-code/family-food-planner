@@ -6,6 +6,9 @@ import { getCatalogVersion, isOnRoster, latestSubmittedSurvey } from './repo';
 import { buildNestedPlan, ENGINE_VERSION, type PlanInput, type PlanMember, type PlanResult } from '../domain/planner';
 import type { ID, PlanSnapshot, PlanningScenario, RatingCode, Scenario, Tier } from '../domain/types';
 
+/** Plans the admin picks by hand. By default just the 3-day plan. */
+export const handPickTiers = (hh: { handPickTiers?: Tier[] }): Tier[] => hh.handPickTiers ?? ['short'];
+
 export const TIER_LABEL: Record<Tier, string> = { short: 'Short term', medium: 'Medium term', long: 'Long term' };
 export const SCENARIO_LABEL: Record<Scenario, string> = { 'no-cook': 'No cooking', 'limited-cook': 'Limited cooking' };
 /** Every plan assumes some cooking (camp stove) by default; "No cooking" stays available as a backup check. */
@@ -42,14 +45,14 @@ export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoK
     });
   }
   const foods = await database.foods.toArray();
-  return { tier, scenario, days, defaults: d, members, foods, include: hh.planOverrides?.[tier] ?? [], substitutions: hh.planSubstitutions ?? {}, sourceSurveyIds };
+  return { tier, scenario, days, defaults: d, members, foods, include: hh.planOverrides?.[tier] ?? [], substitutions: hh.planSubstitutions ?? {}, quantities: hh.planQuantities?.[tier], handPick: handPickTiers(hh).includes(tier), sourceSurveyIds };
 }
 
 export async function computePlan(tier: Tier, scenario: Scenario, dek: CryptoKey | null, database: PlannerDB = defaultDb) {
   const input = await loadPlanInput(tier, scenario, dek, database);
   const d = input.defaults;
   const hh = await database.households.toCollection().first();
-  return { input, result: buildNestedPlan(input, { days: { short: d.shortDays, medium: d.mediumDays, long: d.longDays }, include: hh?.planOverrides }) };
+  return { input, result: buildNestedPlan(input, { days: { short: d.shortDays, medium: d.mediumDays, long: d.longDays }, include: hh?.planOverrides, quantities: hh?.planQuantities, handPick: hh ? handPickTiers(hh) : [] }) };
 }
 
 export interface SavedPlan { snapshot: PlanSnapshot; scenario: PlanningScenario; result: PlanResult }

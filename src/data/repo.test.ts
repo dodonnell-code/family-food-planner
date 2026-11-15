@@ -213,3 +213,16 @@ describe('DB v1 → v2 upgrade', () => {
     expect(z?.conditionLabelEnc).toBeUndefined();
   });
 });
+
+describe('seed nutrition facts', () => {
+  it('every seed food has full nutrition facts and says where they came from', () => {
+    for (const f of buildSeedCatalog()) {
+      const n = f.nutrition;
+      for (const k of ['proteinG', 'carbsG', 'fatG', 'satFatG', 'fiberG', 'sugarG', 'sodiumMg'] as const) expect(n[k], `${f.id} ${k}`).toBeTypeOf('number');
+      expect(n.source, f.id).toBeTruthy();
+      // Calories roughly match the macros (within reason for generic values).
+      const est = (n.proteinG ?? 0) * 4 + (n.carbsG ?? 0) * 4 + (n.fatG ?? 0) * 9;
+      if (n.caloriesPerServing >= 50) expect(Math.abs(est - n.caloriesPerServing) / n.caloriesPerServing, f.id).toBeLessThan(0.35);
+    }
+  });
+});

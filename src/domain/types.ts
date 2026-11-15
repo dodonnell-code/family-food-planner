@@ -43,6 +43,10 @@ export interface Household {
   planOverrides?: Partial<Record<Tier, ID[]>>;
   /** Admin swaps for every plan: food → replacement food, or '' to just leave it out. */
   planSubstitutions?: Record<ID, ID | ''>;
+  /** Admin-set amounts per plan: food → number of packages. */
+  planQuantities?: Partial<Record<Tier, Record<ID, number>>>;
+  /** Plans the admin picks by hand (missing = just the 3-day plan). */
+  handPickTiers?: Tier[];
   /** Family requests (survey "Foods we should add" / "Comfort meals") the admin has dealt with. */
   requestsDone?: string[];
 }
@@ -250,6 +254,13 @@ export interface FoodItem {
     proteinG?: number;
     /** Approximate total carbs per serving; generic estimate — verify the actual label. */
     carbsG?: number;
+    fatG?: number;
+    satFatG?: number;
+    fiberG?: number;
+    sugarG?: number;
+    sodiumMg?: number;
+    /** Where the values came from (e.g. typical values, or "From the label"). */
+    source?: string;
   };
   package: {
     description: string;

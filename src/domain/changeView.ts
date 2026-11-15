@@ -38,6 +38,23 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
         if (undone) return `Admin undid the swap for ${nm(undone)}`;
         return 'Plan swaps changed';
       }
+      if (c.after?.handPickTiers) {
+        const a = c.after.handPickTiers as string[];
+        const b = (c.before?.handPickTiers ?? ['short']) as string[];
+        const on = a.find((t) => !b.includes(t));
+        const off = b.find((t) => !a.includes(t));
+        return on ? `Admin now picks the ${on}-term plan by hand` : off ? `The planner now chooses the ${off}-term plan` : 'Plan picking changed';
+      }
+      if (c.after?.planQuantities) {
+        const b = (c.before?.planQuantities ?? {}) as Record<string, Record<string, number>>;
+        const a = c.after.planQuantities as Record<string, Record<string, number>>;
+        const nm = (id?: string) => l.foods?.get(id ?? '')?.name ?? 'a food';
+        for (const t of ['short', 'medium', 'long']) {
+          const id = [...new Set([...Object.keys(a[t] ?? {}), ...Object.keys(b[t] ?? {})])].find((k) => a[t]?.[k] !== b[t]?.[k]);
+          if (id) return a[t]?.[id] === undefined ? `Admin reset the amount of ${nm(id)} in the ${t}-term plan` : `Admin set ${nm(id)} to ${a[t][id]} packages in the ${t}-term plan`;
+        }
+        return 'Plan amounts changed';
+      }
       if (!c.after?.planOverrides) return 'Planning settings changed';
       const b = (c.before?.planOverrides ?? {}) as Record<string, string[]>;
       const a = c.after.planOverrides as Record<string, string[]>;
@@ -102,7 +119,7 @@ const LABELS: Record<string, string> = {
   adminNoteEnc: 'Note', active: 'Active', kind: 'Need', confirmed: 'Amount confirmed', detailsEnc: 'Details', labelEnc: 'Condition',
   version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
   ignoredRefusals: 'Survey refusals not applied',
-  planSubstitutions: 'Swaps', 'planOverrides.short': 'Added to short-term plan', 'planOverrides.medium': 'Added to medium-term plan', 'planOverrides.long': 'Added to long-term plan',
+  planSubstitutions: 'Swaps', 'planOverrides.short': 'Added to short-term plan', 'planOverrides.medium': 'Added to medium-term plan', 'planOverrides.long': 'Added to long-term plan', planQuantities: 'Amounts set by admin', handPickTiers: 'Hand-picked plans',
   name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
   rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', equipment: 'Equipment needed', mealRole: 'Meal role', needsReview: 'Needs review',
   'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',

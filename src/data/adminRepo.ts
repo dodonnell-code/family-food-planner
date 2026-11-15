@@ -112,6 +112,43 @@ export async function setPlanOverride(tier: Tier, foodId: ID, include: boolean, 
   await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planOverrides: before }, after: { planOverrides } });
 }
 
+/** Set the whole pick list for a plan at once (hand-picked plans). */
+export async function setPlanPicks(tier: Tier, foodIds: ID[], database: PlannerDB = defaultDb) {
+  const hh = await database.households.toCollection().first();
+  if (!hh) throw new Error('Household not initialized');
+  const before = hh.planOverrides ?? {};
+  const planOverrides = { ...before, [tier]: [...new Set(foodIds)] };
+  await database.households.update(hh.id, { planOverrides });
+  await audit('plan.picks', {}, `${tier}: ${foodIds.length} foods`, database);
+  await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planOverrides: before }, after: { planOverrides } });
+}
+
+/** Pick a plan's foods by hand, or let the planner choose. */
+export async function setHandPick(tier: Tier, on: boolean, database: PlannerDB = defaultDb) {
+  const hh = await database.households.toCollection().first();
+  if (!hh) throw new Error('Household not initialized');
+  const before = hh.handPickTiers ?? ['short'];
+  const handPickTiers = on ? [...new Set([...before, tier])] : before.filter((t) => t !== tier);
+  await database.households.update(hh.id, { handPickTiers });
+  await audit('plan.handpick', {}, `${tier}: ${on ? 'hand-picked' : 'planner chooses'}`, database);
+  await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { handPickTiers: before }, after: { handPickTiers } });
+}
+
+/** Admin-set amount (packages) for a food in one plan; undefined goes back to the planner's amount. */
+export async function setPlanQuantity(tier: Tier, foodId: ID, packages: number | undefined, database: PlannerDB = defaultDb) {
+  const hh = await database.households.toCollection().first();
+  if (!hh) throw new Error('Household not initialized');
+  if (packages !== undefined && (!Number.isFinite(packages) || packages < 0 || packages > 100000)) throw new Error('Enter a number of packages (0 or more)');
+  const before = hh.planQuantities ?? {};
+  const t = { ...(before[tier] ?? {}) };
+  if (packages === undefined) delete t[foodId]; else t[foodId] = Math.round(packages);
+  const planQuantities = { ...before, [tier]: t };
+  await database.households.update(hh.id, { planQuantities });
+  const food = await database.foods.get(foodId);
+  await audit('plan.quantity', { foodId }, `${tier}: ${food?.name ?? foodId} → ${packages === undefined ? 'planner amount' : `${Math.round(packages)} packages`}`, database);
+  await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planQuantities: before }, after: { planQuantities } });
+}
+
 /** Admin swap for every plan: replace a food with another ('' = just leave it out), or undo (to = undefined). */
 export async function setPlanSubstitution(from: ID, to: ID | '' | undefined, database: PlannerDB = defaultDb) {
   const hh = await database.households.toCollection().first();

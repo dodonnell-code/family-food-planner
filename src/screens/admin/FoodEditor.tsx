@@ -21,6 +21,8 @@ const ROLES: { v: FoodItem['mealRole']; l: string }[] = [
   { v: 'main', l: 'Main dish' }, { v: 'side', l: 'Side' }, { v: 'staple', l: 'Staple / ingredient' }, { v: 'snack', l: 'Snack' }, { v: 'drink', l: 'Drink' },
 ];
 
+const LABEL_SOURCE = 'Entered by admin (from the label)';
+
 export default function FoodEditor() {
   const { id } = useParams<{ id: string }>();
   const isNew = id === 'new';
@@ -158,8 +160,14 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
         <div className="grid">
           <label>Serving size<input value={f.nutrition.servingDesc} onChange={(e) => setIn('nutrition', { servingDesc: e.target.value })} /></label>
           <label>Calories per serving<input type="number" min={0} value={f.nutrition.caloriesPerServing} onChange={(e) => setIn('nutrition', { caloriesPerServing: num(e.target.value) ?? 0 })} /></label>
-          <label>Carbs per serving (g)<input type="number" min={0} value={f.nutrition.carbsG ?? ''} onChange={(e) => setIn('nutrition', { carbsG: num(e.target.value) })} /></label>
-          <label>Protein per serving (g)<input type="number" min={0} value={f.nutrition.proteinG ?? ''} onChange={(e) => setIn('nutrition', { proteinG: num(e.target.value) })} /></label>
+          <label>Protein per serving (g)<input type="number" min={0} step="any" value={f.nutrition.proteinG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { proteinG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Carbs per serving (g)<input type="number" min={0} step="any" value={f.nutrition.carbsG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { carbsG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Fat per serving (g)<input type="number" min={0} step="any" value={f.nutrition.fatG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { fatG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Saturated fat (g)<input type="number" min={0} step="any" value={f.nutrition.satFatG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { satFatG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Fiber (g)<input type="number" min={0} step="any" value={f.nutrition.fiberG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { fiberG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Sugar (g)<input type="number" min={0} step="any" value={f.nutrition.sugarG ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { sugarG: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Sodium (mg)<input type="number" min={0} step="any" value={f.nutrition.sodiumMg ?? ''} placeholder="Not available" onChange={(e) => setIn('nutrition', { sodiumMg: num(e.target.value), source: LABEL_SOURCE })} /></label>
+          <label>Nutrition source<input value={f.nutrition.source ?? ''} placeholder="e.g. From the label" onChange={(e) => setIn('nutrition', { source: e.target.value || undefined })} /></label>
           <label>Package<input value={f.package.description} onChange={(e) => setIn('package', { description: e.target.value })} placeholder="e.g. 15 oz can" /></label>
           <label>Servings per package<input type="number" min={0.1} step={0.1} value={f.package.servingsPerPackage} onChange={(e) => setIn('package', { servingsPerPackage: num(e.target.value) ?? 0 })} /></label>
           <label>Package volume (liters, optional)<input type="number" min={0} step={0.05} value={f.package.volumeL ?? ''} onChange={(e) => setIn('package', { volumeL: num(e.target.value) })} /></label>
