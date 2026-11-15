@@ -150,6 +150,17 @@ describe('catalog upgrade', () => {
     expect((await db.foods.get('fd-chicken-rice'))?.active).toBe(true);
     expect((await db.foods.get('fd-entree'))?.active).toBe(true);
   });
+  it('moves households on the old 3-day water default to 14 days, once', async () => {
+    const hh = (await db.households.toCollection().first())!;
+    await db.households.update(hh.id, { planningDefaults: { ...hh.planningDefaults, waterReserveDays: 3 } });
+    await db.meta.delete('water14');
+    await ensureInitialized(db);
+    expect((await db.households.get(hh.id))!.planningDefaults.waterReserveDays).toBe(14);
+    // A later choice of 3 days is kept.
+    await db.households.update(hh.id, { planningDefaults: { ...hh.planningDefaults, waterReserveDays: 3 } });
+    await ensureInitialized(db);
+    expect((await db.households.get(hh.id))!.planningDefaults.waterReserveDays).toBe(3);
+  });
   it('every seed entry has a carb estimate', () => {
     expect(buildSeedCatalog().filter((f) => f.nutrition.carbsG === undefined).map((f) => f.id)).toEqual([]);
   });

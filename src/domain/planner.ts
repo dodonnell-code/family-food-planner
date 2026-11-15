@@ -71,15 +71,23 @@ export interface WaterTreatment {
   days: number;
   gallonsPerDay: number;
   gallons: number;
-  /** Unscented bleach to treat it all, doubled for cloudy water (fl oz). */
+  /** Unscented bleach to treat it all, doubled for cloudy water (fl oz). Last resort. */
   bleachOz: number;
+  /** Rough stove time to boil it all instead (about 10 minutes a gallon). */
+  boilHours: number;
 }
 
-/** Supplies to make water safe once stored water runs out (CDC: filter, then disinfect, or boil). */
+/**
+ * Supplies to make water safe once stored water runs out: disinfect (boil or tablets; bleach as
+ * a last resort), then filter. Gravity filters aren't independently certified to remove viruses,
+ * and makers like Berkey advise disinfecting questionable water too.
+ */
 export const WATER_TREATMENT_EQUIPMENT = [
-  'Water filter (gravity or pump; removes bacteria and protozoa)',
-  'Unscented household bleach (6–8.25%) and a medicine dropper',
-  'Food-grade buckets or jugs to collect and treat water',
+  'Gravity water filter (Berkey or similar) with a spare set of filter elements',
+  'Water purification tablets (chlorine dioxide)',
+  'Backup portable water filter (squeeze or straw type)',
+  'Unscented household bleach (6–8.25%) and a dropper, as a last resort',
+  'Food-grade buckets or jugs to collect and hold water',
   'Coffee filters or clean cloth to pre-filter cloudy water',
 ];
 
@@ -641,8 +649,8 @@ export function buildPlan(input: PlanInput): PlanResult {
     const tDays = days - drinkingDays;
     const gallons = round1((drinkPerDay + prepPerDay) * tDays);
     // CDC: 8 drops (~0.4 mL) of 6% bleach per gallon; doubled for cloudy water.
-    treatment = { fromDay: drinkingDays + 1, days: tDays, gallonsPerDay: round1(drinkPerDay + prepPerDay), gallons, bleachOz: Math.max(1, Math.ceil((gallons * 0.8) / 29.57)) };
-    warnings.push(`Stored water covers the first ${drinkingDays} days. From day ${drinkingDays + 1}, you will need to make about ${treatment.gallonsPerDay} gallons a day safe (${gallons} gallons in all): have a water source, a filter and unscented bleach ready (listed under Equipment).`);
+    treatment = { fromDay: drinkingDays + 1, days: tDays, gallonsPerDay: round1(drinkPerDay + prepPerDay), gallons, bleachOz: Math.max(1, Math.ceil((gallons * 0.8) / 29.57)), boilHours: Math.ceil((gallons * 10) / 60) };
+    warnings.push(`Stored water covers the first ${drinkingDays} days. From day ${drinkingDays + 1}, you will need to make about ${treatment.gallonsPerDay} gallons a day safe (${gallons} gallons in all): have a water source, a gravity filter and backups ready (listed under Equipment).`);
   }
 
   const fuelItems = items.filter((i) => i.needsFuel).map((i) => {

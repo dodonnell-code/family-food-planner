@@ -45,6 +45,14 @@ export async function ensureInitialized(database: PlannerDB = defaultDb): Promis
       hh = { ...hh, planningDefaults: { ...DEFAULT_PLANNING, ...hh.planningDefaults } };
       await database.households.put(hh);
     }
+    // The stored-water default went from 3 to 14 days (after that, plans make water safe).
+    if (!(await database.meta.get('water14'))) {
+      if (hh.planningDefaults.waterReserveDays === 3) {
+        hh = { ...hh, planningDefaults: { ...hh.planningDefaults, waterReserveDays: 14 } };
+        await database.households.put(hh);
+      }
+      await database.meta.put({ key: 'water14', value: 1 });
+    }
     const seeded = (await database.meta.get('catalogVersion'))?.value as number | undefined;
     if (!seeded || seeded < CATALOG_VERSION) {
       // Add new seed entries; refresh untouched seed entries (revision 1 = never edited by admin).

@@ -1,4 +1,4 @@
-import { WaterTreatmentNote } from './Plan';
+import { WaterStored, WaterTreatmentNote } from './Plan';
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useSearchParams } from 'react-router-dom';
@@ -140,8 +140,8 @@ function ReportBody({ r, household, generatedAt, mode, names, profiles, stillToB
         <div>
           <h2>Water</h2>
           {stillToBuy ? <p>{r.water.totalGallons > 0 ? <><strong>{num(r.water.totalGallons)} gal</strong> still to store</> : 'Enough water stored.'}</p> : <ul>
-            <li><strong>Store {num(r.water.totalGallons)} gal</strong> for the first {r.water.drinkingDays} days ({num(r.water.drinkingGallons)} drinking + {num(r.water.prepGallons)} for food)</li>
           </ul>}
+          {!stillToBuy && <WaterStored r={r} />}
           {r.water.treatment && <WaterTreatmentNote t={r.water.treatment} />}
           <h2>Cooking fuel</h2>
           {r.fuel.burnerMinutes === 0 ? <p>None needed.</p> : <ul>{r.fuel.items.map((f) => <li key={f.name}>{f.name}: {f.minutes} min</li>)}<li><strong>About {num(r.fuel.burnerMinutes / 60)} burner-hours</strong>, plus extra</li></ul>}

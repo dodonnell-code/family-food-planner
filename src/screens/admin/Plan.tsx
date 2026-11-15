@@ -264,16 +264,31 @@ function Coverage({ r }: { r: PlanResult }) {
   );
 }
 
+/** Stored water: drinking (people × gallons × days) and cooking water, listed separately. */
+export function WaterStored({ r }: { r: PlanResult }) {
+  const perPerson = r.people && r.water.drinkingDays ? r.water.drinkingGallons / r.people / r.water.drinkingDays : 0;
+  return (
+    <div className="stack" style={{ gap: 2 }}>
+      <div><strong>{num(r.water.drinkingGallons)} gal drinking water</strong> to store</div>
+      <div className="small muted">{num(perPerson)} gal × {r.people} {r.people === 1 ? 'person' : 'people'} × {r.water.drinkingDays} days</div>
+      {r.water.prepGallons > 0 && <div>+ {num(r.water.prepGallons)} gal for cooking <span className="small muted">(rice, beans, freeze-dried meals over those {r.water.drinkingDays} days)</span></div>}
+      <div className="small muted">Total to store: {num(r.water.totalGallons)} gal</div>
+    </div>
+  );
+}
+
 export function WaterTreatmentNote({ t }: { t: NonNullable<PlanResult['water']['treatment']> }) {
   return (
     <div className="stack" style={{ gap: 4 }}>
-      <div><strong>Make {num(t.gallons)} gal safe</strong> from day {t.fromDay} (about {num(t.gallonsPerDay)} gal a day)</div>
+      <div><strong>Make {num(t.gallons)} gal safe</strong> from day {t.fromDay} (about {num(t.gallonsPerDay)} gal a day for {t.days} days)</div>
       <ol className="small" style={{ margin: 0, paddingLeft: 20 }}>
-        <li>Collect from a source you’ve picked ahead of time (rain barrel, well, spring, stream or lake). Not from pools, floodwater or anything near chemicals or fuel.</li>
-        <li>Let cloudy water settle, then pour it through a coffee filter or clean cloth.</li>
-        <li>Run it through the water filter, then disinfect: 8 drops of unscented 6% bleach per gallon (6 drops if 8.25%), double if still cloudy. Stir and wait 30 minutes. Or boil for 1 minute (3 minutes above 6,500 ft).</li>
+        <li><strong>Collect</strong> from a source you’ve picked ahead of time (rain barrel, well, spring, stream or lake). Not from pools, floodwater or anything near chemicals or fuel.</li>
+        <li><strong>Pre-filter:</strong> let cloudy water settle, then pour it through a coffee filter or clean cloth.</li>
+        <li><strong>Disinfect:</strong> a 1-minute rolling boil (3 minutes above 6,500 ft), or chlorine dioxide purification tablets (follow the package). Boiling all of it would take about {t.boilHours} hours of stove time, so tablets save a lot of fuel.</li>
+        <li><strong>Filter</strong> through the gravity filter (Berkey or similar). It removes much of what’s left and the chemical taste. Check its elements are rated for at least {num(t.gallons)} gal, and keep a spare set. If it fails, use the portable squeeze filter.</li>
+        <li><strong>Last resort</strong> if you run out of tablets and fuel: 8 drops of unscented 6% bleach per gallon (6 drops if 8.25%), double if cloudy; stir and wait 30 minutes. About {t.bleachOz} fl oz would cover it all; bleach weakens, so replace it every 6–12 months.</li>
       </ol>
-      <div className="small muted">Bleach for all of it: about {t.bleachOz} fl oz (doubled for cloudy water). Bleach weakens over time, so replace it every 6–12 months. Source: CDC, “Making Water Safe in an Emergency”.</div>
+      <div className="small muted">Why disinfect as well as filter: gravity filters like Berkey aren’t independently certified (NSF/ANSI) to remove viruses, Berkey advises disinfecting questionable water, and the CDC notes many filters may not remove viruses and bacteria. Sources: CDC, “Making Water Safe in an Emergency” and “Choosing Home Water Filters”. Follow your filter maker’s instructions for cleaning and replacing elements.</div>
     </div>
   );
 }
@@ -285,8 +300,7 @@ function WaterFuel({ r }: { r: PlanResult }) {
       <div className="grid">
         <div className="stack" style={{ gap: 4 }}>
           <h3 style={{ margin: 0 }}>Water</h3>
-          <div><strong>Store {num(r.water.totalGallons)} gal</strong> for the first {r.water.drinkingDays} days</div>
-          <div className="small muted">{num(r.water.drinkingGallons)} gal drinking + {num(r.water.prepGallons)} gal for preparing food</div>
+          <WaterStored r={r} />
           {r.water.treatment && <WaterTreatmentNote t={r.water.treatment} />}
           <div className="small muted">CDC minimum: 1 gallon per person per day. Hot climates, illness, nursing and pets need more.</div>
         </div>

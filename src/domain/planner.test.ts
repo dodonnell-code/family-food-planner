@@ -334,13 +334,22 @@ describe('planner: water after the stored days', () => {
     expect(t).toMatchObject({ fromDay: 15, days: 76 });
     expect(t.gallons).toBeGreaterThanOrEqual(76 * 3);
     expect(t.bleachOz).toBeGreaterThan(0);
-    expect(p.equipment.some((e) => e.item.startsWith('Water filter'))).toBe(true);
-    expect(p.equipment.some((e) => e.item.startsWith('Unscented household bleach'))).toBe(true);
+    expect(p.equipment.some((e) => e.item.startsWith('Gravity water filter'))).toBe(true);
+    expect(p.equipment.some((e) => e.item.startsWith('Backup portable water filter'))).toBe(true);
+    expect(p.equipment.find((e) => e.item.startsWith('Unscented household bleach'))!.item).toMatch(/last resort/);
+    expect(t.boilHours).toBeGreaterThan(0);
   });
 
   it('needs no treatment when stored water covers the whole plan', () => {
     const p = buildPlan(input(fam(), 'medium', { defaults: { ...DEFAULT_PLANNING, waterReserveDays: 14 } }));
     expect(p.water.treatment).toBeUndefined();
-    expect(p.equipment.some((e) => e.item.startsWith('Water filter'))).toBe(false);
+    expect(p.equipment.some((e) => e.item.startsWith('Gravity water filter'))).toBe(false);
+  });
+
+  it('stores 1 gallon per person per day of drinking water: 5 people × 14 days = 70 gallons', () => {
+    const five = ['a', 'b', 'c', 'd', 'e'].map((id) => member(id));
+    const p = buildPlan(input(five, 'medium', { defaults: { ...DEFAULT_PLANNING, waterReserveDays: 14 } }));
+    expect(p.water.drinkingGallons).toBe(70);
+    expect(p.water.totalGallons).toBe(Math.round((70 + p.water.prepGallons) * 10) / 10);
   });
 });
