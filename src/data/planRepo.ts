@@ -3,6 +3,7 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import { decryptString } from './crypto';
 import { getCatalogVersion, isOnRoster, latestSubmittedSurvey } from './repo';
+import { carryOverMerged } from './seedCatalog';
 import { buildNestedPlan, ENGINE_VERSION, type PlanInput, type PlanMember, type PlanResult } from '../domain/planner';
 import type { ID, PlanSnapshot, PlanningScenario, RatingCode, Scenario, Tier } from '../domain/types';
 
@@ -30,9 +31,15 @@ export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoK
       latestSubmittedSurvey(m.id, database),
     ]);
     const ratings: Record<ID, RatingCode> = {};
+    const kinds: Record<ID, string[]> = {};
     if (survey) {
       sourceSurveyIds.push(survey.id);
-      for (const a of await database.answers.where('surveyId').equals(survey.id).toArray()) ratings[a.foodItemId] = a.rating;
+      const answers = await database.answers.where('surveyId').equals(survey.id).toArray();
+      for (const a of answers) {
+        ratings[a.foodItemId] = a.rating;
+        if (a.kinds?.length) kinds[a.foodItemId] = a.kinds;
+      }
+      carryOverMerged(ratings, kinds, new Set(answers.map((a) => a.foodItemId)));
     }
     const withDetails = await Promise.all(needs.map(async (n) => {
       if (!n.detailsEnc || !dek) return n;
@@ -40,7 +47,7 @@ export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoK
     }));
     members.push({
       id: m.id, name: m.preferredName || m.displayName, dailyCalories: m.planningProfile.dailyCalorieGoal,
-      restrictions, needs: withDetails, surveyId: survey?.id, surveyCompletedAt: survey?.completedAt, ratings,
+      restrictions, needs: withDetails, surveyId: survey?.id, surveyCompletedAt: survey?.completedAt, ratings, kinds,
       ignoredRefusals: survey?.ignoredRefusals ?? [], prep: survey?.prepTolerance,
     });
   }

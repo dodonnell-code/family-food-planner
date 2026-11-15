@@ -17,6 +17,14 @@ export function normalizeFood(f: FoodItem): FoodItem {
   const edibleWithoutHeat = NO_HEAT.includes(f.prep.method);
   const equipment = [...new Set((f.equipment ?? []).map((t) => t.trim()).filter(Boolean))];
   const mayContain = (f.allergens.mayContain ?? []).filter((a) => !f.allergens.contains.includes(a));
+  // Kinds: drop blank ones; every kind gets a unique id (kept once set, so survey answers still match).
+  const seen = new Set<string>();
+  const kinds = (f.kinds ?? []).filter((k) => k.name.trim()).map((k) => {
+    let id = k.id || k.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'kind';
+    while (seen.has(id)) id = `${id}-2`;
+    seen.add(id);
+    return { ...k, id, name: k.name.trim() };
+  });
   return {
     ...f,
     name: f.name.trim(),
@@ -24,6 +32,7 @@ export function normalizeFood(f: FoodItem): FoodItem {
     prep: { ...f.prep, edibleWithoutHeat, needsFuel: !edibleWithoutHeat, cookMinutes: edibleWithoutHeat ? 0 : f.prep.cookMinutes },
     allergens: { ...f.allergens, mayContain: mayContain.length ? mayContain : undefined },
     equipment: equipment.length ? equipment : undefined,
+    kinds: kinds.length ? kinds : undefined,
   };
 }
 
@@ -50,7 +59,7 @@ export function blankFood(): FoodItem {
   };
 }
 
-const FOOD_KEYS: (keyof FoodItem)[] = ['name', 'category', 'form', 'examples', 'tags', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'priceEstimate', 'relativeCost', 'rotationPriority', 'packagingDurability', 'safetyNotes', 'equipment', 'mealRole', 'needsReview'];
+const FOOD_KEYS: (keyof FoodItem)[] = ['name', 'category', 'form', 'examples', 'tags', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'priceEstimate', 'relativeCost', 'rotationPriority', 'packagingDurability', 'safetyNotes', 'equipment', 'mealRole', 'needsReview', 'kinds'];
 
 export async function saveFood(input: FoodItem, database: PlannerDB = defaultDb): Promise<FoodItem> {
   const f = normalizeFood(input);

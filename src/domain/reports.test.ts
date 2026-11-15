@@ -4,7 +4,7 @@ import { DEFAULT_PLANNING } from '../data/repo';
 import { buildPlan, type PlanMember } from './planner';
 import { planCsv, planJson } from './reports';
 
-const foods = buildSeedCatalog().map((f) => (f.id === 'chili-canned' ? { ...f, name: '=HYPERLINK("x")' } : f));
+const foods = buildSeedCatalog().map((f) => (f.id === 'canned-chili' ? { ...f, name: '=HYPERLINK("x")' } : f));
 const sam: PlanMember = {
   id: 'z', name: 'Sam', ratings: {}, ignoredRefusals: [], surveyId: 's',
   restrictions: [{ id: 'r', memberId: 'z', type: 'intolerance', strictness: 'avoid', subject: 'milk', active: true, createdAt: '' }],

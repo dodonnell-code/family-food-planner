@@ -6,7 +6,7 @@ import { blankFood, saveFood, setFoodActive } from '../../data/adminRepo';
 import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
-import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../../domain/types';
+import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod } from '../../domain/types';
 
 const FORMS: FoodForm[] = ['canned', 'pouch', 'dry', 'freeze-dried', 'dehydrated', 'jar', 'box', 'bottle', 'packet', 'bulk'];
 const METHODS: { v: PrepMethod; l: string }[] = [
@@ -155,6 +155,8 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
         </label>
       </section>
 
+      <KindsEditor kinds={f.kinds ?? []} onChange={(k) => set('kinds', k.length ? k : undefined)} />
+
       <section className="card stack">
         <h2>Nutrition &amp; package</h2>
         <div className="grid">
@@ -209,5 +211,37 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
       {err && <div className="notice danger" role="alert">{err}</div>}
       <div className="row"><button className="primary big">{isNew ? 'Add food' : 'Save changes'}</button></div>
     </form>
+  );
+}
+
+/** Kinds of a generic food: asked about in the survey, broken down on the shopping list. */
+function KindsEditor({ kinds, onChange }: { kinds: FoodKind[]; onChange: (k: FoodKind[]) => void }) {
+  const update = (i: number, patch: Partial<FoodKind>) => onChange(kinds.map((k, j) => (j === i ? { ...k, ...patch } : k)));
+  const toggle = (i: number, a: Allergen) => {
+    const cur = new Set(kinds[i].contains ?? []);
+    if (cur.has(a)) cur.delete(a); else cur.add(a);
+    update(i, { contains: cur.size ? [...cur] : undefined });
+  };
+  return (
+    <section className="card stack">
+      <h2 style={{ margin: 0 }}>Kinds</h2>
+      <p className="small muted" style={{ margin: 0 }}>For generic foods like canned fruit or soups. The survey asks which kinds each person likes, and the shopping list says which kinds to buy and which to skip for someone’s safety. Allergens here are added to the food’s own. Leave empty for foods that don’t come in kinds.</p>
+      {kinds.map((k, i) => (
+        <div key={i} className="stack" style={{ gap: 6, borderTop: '1px solid var(--line, #ddd)', paddingTop: 8 }}>
+          <div className="row" style={{ gap: 8 }}>
+            <input aria-label="Icon (emoji)" value={k.icon ?? ''} onChange={(e) => update(i, { icon: e.target.value || undefined })} style={{ width: 64, textAlign: 'center', fontSize: '1.3rem' }} placeholder="🍑" />
+            <input aria-label="Kind name" value={k.name} onChange={(e) => update(i, { name: e.target.value })} style={{ maxWidth: 280 }} placeholder="e.g. Peaches" />
+            <button className="ghost small" onClick={() => onChange(kinds.filter((_, j) => j !== i))}>Remove</button>
+          </div>
+          <div className="row small" style={{ gap: 6 }}>
+            <span className="muted">Also contains:</span>
+            {ALLERGENS.map((a) => (
+              <label key={a.code} className="inline"><input type="checkbox" checked={!!k.contains?.includes(a.code)} onChange={() => toggle(i, a.code)} /> {a.label}</label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div><button className="small" onClick={() => onChange([...kinds, { id: '', name: '' }])}>Add a kind</button></div>
+    </section>
   );
 }

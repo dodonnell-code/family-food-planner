@@ -1,5 +1,5 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
-import { buildSeedCatalog, CATALOG_VERSION, RETIRED_SEED_IDS } from './seedCatalog';
+import { buildSeedCatalog, CATALOG_VERSION, carryOverMerged, RETIRED_SEED_IDS } from './seedCatalog';
 import { pick, recordChange } from './changes';
 import type {
   Household,
@@ -15,6 +15,8 @@ import type {
   SurveyAnswer,
 } from '../domain/types';
 
+const KINDS_REFRESH = 'The survey now asks which kinds of fruit, vegetables, soups and more they like. A retake starts with their earlier answers filled in.';
+
 export const DEFAULT_PLANNING = {
   shortDays: 3,
   mediumDays: 14,
@@ -29,7 +31,7 @@ export const DEFAULT_PLANNING = {
 
 // ---------------- Household & seed ----------------
 export async function ensureInitialized(database: PlannerDB = defaultDb): Promise<Household> {
-  return database.transaction('rw', database.households, database.foods, database.meta, async () => {
+  return database.transaction('rw', [database.households, database.foods, database.meta, database.surveys], async () => {
     let hh = await database.households.toCollection().first();
     if (!hh) {
       hh = {
@@ -63,6 +65,12 @@ export async function ensureInitialized(database: PlannerDB = defaultDb): Promis
       await database.foods.bulkPut(seed.filter((f) => existing.get(f.id)?.revision === 1));
       for (const id of RETIRED_SEED_IDS) { const f = existing.get(id); if (f?.revision === 1 && f.active) await database.foods.update(id, { active: false }); }
       await database.meta.put({ key: 'catalogVersion', value: CATALOG_VERSION });
+    }
+    // v13 added "which kinds do you like?" questions: suggest a quick retake (answers carry over).
+    if (seeded && seeded < 13 && !(await database.meta.get('kinds13'))) {
+      const surveys = await database.surveys.filter((x) => x.status === 'submitted').toArray();
+      for (const s of surveys) await database.surveys.update(s.id, { needsRefresh: true, refreshReason: KINDS_REFRESH });
+      await database.meta.put({ key: 'kinds13', value: 1 });
     }
     return hh;
   });
@@ -257,6 +265,7 @@ export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = de
   const ts = now();
   const s: Survey = {
     id: uid(),
+    prefilledFrom: prev && prev.status !== 'in-progress' ? prev.id : undefined,
     memberId,
     catalogVersion: await getCatalogVersion(database),
     status: 'in-progress',
@@ -267,6 +276,21 @@ export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = de
     updatedAt: ts,
   };
   await database.surveys.add(s);
+  // A retake starts from the previous answers (merged foods carried over to their generic food).
+  if (s.prefilledFrom) {
+    const old = await database.answers.where('surveyId').equals(s.prefilledFrom).toArray();
+    const active = new Set((await database.foods.filter((f) => f.active).toArray()).map((f) => f.id));
+    const ratings: Record<ID, RatingCode> = {};
+    const kinds: Record<ID, string[]> = {};
+    for (const a of old) { ratings[a.foodItemId] = a.rating; if (a.kinds?.length) kinds[a.foodItemId] = a.kinds; }
+    carryOverMerged(ratings, kinds, new Set(old.map((a) => a.foodItemId)));
+    const byId = new Map(old.map((a) => [a.foodItemId, a]));
+    await database.answers.bulkPut(Object.entries(ratings).filter(([id]) => active.has(id)).map(([id, rating]) => {
+      const a = byId.get(id);
+      return { id: `${s.id}:${id}`, surveyId: s.id, foodItemId: id, rating, onlyPreparedCertainWay: a?.onlyPreparedCertainWay, prepNotes: a?.prepNotes, comment: a?.comment, kinds: kinds[id] };
+    }));
+    if (prev?.prepTolerance) await database.surveys.update(s.id, { prepTolerance: prev.prepTolerance });
+  }
   await audit('survey.start', { memberId, surveyId: s.id }, undefined, database);
   return s;
 }
@@ -281,7 +305,7 @@ export async function saveAnswer(
   surveyId: ID,
   foodItemId: ID,
   rating: RatingCode,
-  extra: Pick<SurveyAnswer, 'onlyPreparedCertainWay' | 'prepNotes' | 'comment'> = {},
+  extra: Pick<SurveyAnswer, 'onlyPreparedCertainWay' | 'prepNotes' | 'comment' | 'kinds'> = {},
   database: PlannerDB = defaultDb,
 ) {
   await database.transaction('rw', database.surveys, database.answers, async () => {

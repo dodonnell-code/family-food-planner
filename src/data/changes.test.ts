@@ -143,7 +143,7 @@ describe('respondent suggestions', () => {
       { id: 'a', kind: 'remove-restriction', restrictionId: peanut.id, reason: 'outgrew it' },
       { id: 'b', kind: 'add-restriction', restrictionType: 'cannot-eat', text: 'mushrooms, olives' },
       { id: 'c', kind: 'preferred-name', value: 'Z' },
-    ], 'tuna-canned');
+    ], 'tuna');
 
     const sugs = (await pending()).filter((c) => c.source === 'respondent');
     expect(sugs).toHaveLength(5); // remove peanut, 2 foods, name, can't-eat tuna
@@ -154,7 +154,7 @@ describe('respondent suggestions', () => {
     expect((await db.restrictions.get(peanut.id))?.active).toBe(true); // declined
     expect((await db.members.get(m.id))?.preferredName).toBe('Z');
     const subjects = (await db.restrictions.where('memberId').equals(m.id).filter((r) => r.active).toArray()).map((r) => r.subject).sort();
-    expect(subjects).toEqual(['food:Canned tuna (pull-tab)', 'food:mushrooms', 'food:olives', 'peanut']);
+    expect(subjects).toEqual(['food:Tuna (cans or pouches)', 'food:mushrooms', 'food:olives', 'peanut']);
   });
 });
 

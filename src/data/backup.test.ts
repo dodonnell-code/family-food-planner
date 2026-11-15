@@ -22,7 +22,7 @@ beforeEach(async () => {
   await addNeed({ memberId: alice.id, domain: 'food', kind: 'rapid-carbs', params: { servingsPerDay: 3 }, confirmed: true }, db);
   await addCondition(alice.id, await encryptString(dek, 'Type 1 diabetes'), db);
   const s = await startOrResumeSurvey(alice.id, db);
-  await saveAnswer(s.id, 'chili-canned', 5, {}, db);
+  await saveAnswer(s.id, 'canned-chili', 5, {}, db);
   await submitSurvey(s.id, db);
   const p = await computePlan('short', 'no-cook', dek, db);
   await savePlanSnapshot(p.input, p.result, db);

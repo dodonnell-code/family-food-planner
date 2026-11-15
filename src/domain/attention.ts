@@ -46,7 +46,7 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
         title: `${fname(m)}'s survey is unfinished`, detail: 'They can continue it from the welcome screen.' });
     } else if (latest?.needsRefresh && !inProgress) {
       items.push({ id: `refresh:${m.id}`, severity: 'medium', memberId: m.id, action: 'start-survey', link: `/admin/members/${m.id}`,
-        title: `${fname(m)}'s survey may be outdated`, detail: 'Their restrictions or membership changed after they last took it. Consider a retake.' });
+        title: `${fname(m)}'s survey may be outdated`, detail: latest.refreshReason ?? 'Their restrictions or membership changed after they last took it. Consider a retake.' });
     }
   }
 

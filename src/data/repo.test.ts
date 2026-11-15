@@ -20,6 +20,7 @@ import {
   updateSurveyProgress,
 } from './repo';
 import { buildSeedCatalog } from './seedCatalog';
+import { loadPlanInput } from './planRepo';
 
 let db: PlannerDB;
 beforeEach(async () => {
@@ -53,8 +54,8 @@ describe('acceptance tests (scope §12)', () => {
   it('#1 adding Charlie later does not alter earlier surveys', async () => {
     const alice = await addMember({ displayName: 'Alice' }, db);
     const bob = await addMember({ displayName: 'Bob' }, db);
-    const sa = await completeSurvey(alice.id, { 'tuna-canned': 5 });
-    await completeSurvey(bob.id, { 'tuna-canned': 2 });
+    const sa = await completeSurvey(alice.id, { 'tuna': 5 });
+    await completeSurvey(bob.id, { 'tuna': 2 });
     const before = await answersFor(sa.id, db);
     const charlie = await addMember({ displayName: 'Charlie' }, db);
     expect((await db.members.toArray()).filter((m) => isOnRoster(m)).map((m) => m.id)).toContain(charlie.id);
@@ -87,7 +88,7 @@ describe('acceptance tests (scope §12)', () => {
     await ensureInitialized(db1);
     const m = await addMember({ displayName: 'Dana' }, db1);
     const s = await startOrResumeSurvey(m.id, db1);
-    await saveAnswer(s.id, 'chili-canned', 4, {}, db1);
+    await saveAnswer(s.id, 'canned-chili', 4, {}, db1);
     await updateSurveyProgress(s.id, { currentStep: 3 }, db1);
     db1.close();
 
@@ -100,7 +101,7 @@ describe('acceptance tests (scope §12)', () => {
 
   it('#7 renaming a member keeps responses tied to the stable ID', async () => {
     const m = await addMember({ displayName: 'Alice' }, db);
-    const s = await completeSurvey(m.id, { 'tuna-canned': 5 });
+    const s = await completeSurvey(m.id, { 'tuna': 5 });
     await updateMember(m.id, { displayName: 'Alicia' }, db);
     expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(s.id);
   });
@@ -109,9 +110,9 @@ describe('acceptance tests (scope §12)', () => {
 describe('survey versioning', () => {
   it('locks submitted surveys and keeps previous versions as superseded', async () => {
     const m = await addMember({ displayName: 'Eve' }, db);
-    const v1 = await completeSurvey(m.id, { 'tuna-canned': 3 });
-    await expect(saveAnswer(v1.id, 'tuna-canned', 5, {}, db)).rejects.toThrow(/locked/);
-    const v2 = await completeSurvey(m.id, { 'tuna-canned': 5 });
+    const v1 = await completeSurvey(m.id, { 'tuna': 3 });
+    await expect(saveAnswer(v1.id, 'tuna', 5, {}, db)).rejects.toThrow(/locked/);
+    const v2 = await completeSurvey(m.id, { 'tuna': 5 });
     expect(v2.version).toBe(2);
     expect((await db.surveys.get(v1.id))?.status).toBe('superseded');
     expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(v2.id);
@@ -129,13 +130,13 @@ describe('catalog upgrade', () => {
   it('refreshes unedited seed entries with carbs but never overwrites admin edits', async () => {
     // Simulate an older install: carbs missing, one entry edited by admin, catalog version 1.
     await db.foods.update('white-rice', { nutrition: { servingDesc: '1/4 cup dry', caloriesPerServing: 160 } });
-    await db.foods.update('tuna-canned', { name: 'Our tuna', revision: 2, nutrition: { servingDesc: '2 oz', caloriesPerServing: 60 } });
+    await db.foods.update('tuna', { name: 'Our tuna', revision: 2, nutrition: { servingDesc: '2 oz', caloriesPerServing: 60 } });
     await db.foods.delete('glucose-tabs');
     await db.meta.put({ key: 'catalogVersion', value: 1 });
 
     await ensureInitialized(db);
     expect((await db.foods.get('white-rice'))?.nutrition.carbsG).toBe(36);
-    expect((await db.foods.get('tuna-canned'))?.name).toBe('Our tuna');
+    expect((await db.foods.get('tuna'))?.name).toBe('Our tuna');
     expect((await db.foods.get('glucose-tabs'))?.tags).toContain('rapid-carb');
   });
   it('retires untouched freeze-dried meal entries replaced by generic cans, but keeps admin-edited ones', async () => {
@@ -224,5 +225,44 @@ describe('seed nutrition facts', () => {
       const est = (n.proteinG ?? 0) * 4 + (n.carbsG ?? 0) * 4 + (n.fatG ?? 0) * 9;
       if (n.caloriesPerServing >= 50) expect(Math.abs(est - n.caloriesPerServing) / n.caloriesPerServing, f.id).toBeLessThan(0.35);
     }
+  });
+});
+
+describe('generic foods with kinds', () => {
+  it('carries old answers for merged foods over to the generic food, with liked kinds', async () => {
+    const m = await addMember({ displayName: 'Alice' }, db);
+    const s = await startOrResumeSurvey(m.id, db);
+    // Answers saved against the old, now-merged foods (as in a survey taken before v13).
+    await db.answers.bulkPut([
+      { id: `${s.id}:canned-peaches`, surveyId: s.id, foodItemId: 'canned-peaches', rating: 5 },
+      { id: `${s.id}:canned-pineapple`, surveyId: s.id, foodItemId: 'canned-pineapple', rating: 2 },
+      { id: `${s.id}:chili-canned`, surveyId: s.id, foodItemId: 'chili-canned', rating: 'blocked' },
+      { id: `${s.id}:veg-chili-canned`, surveyId: s.id, foodItemId: 'veg-chili-canned', rating: 4 },
+    ]);
+    await submitSurvey(s.id, db);
+    const input = await loadPlanInput('medium', 'limited-cook', null, db);
+    const a = input!.members[0];
+    expect(a.ratings['canned-fruit']).toBe(5);
+    expect(a.kinds!['canned-fruit']).toEqual(['peaches', 'pears']);
+    expect(a.ratings['canned-chili']).toBe(4);
+    expect(a.kinds!['canned-chili']).toEqual(['vegetarian']);
+
+    // A retake starts with those answers filled in, on the generic foods.
+    const v2 = await startOrResumeSurvey(m.id, db);
+    expect(v2.prefilledFrom).toBe(s.id);
+    const pre = await db.answers.where('surveyId').equals(v2.id).toArray();
+    expect(pre.find((x) => x.foodItemId === 'canned-fruit')).toMatchObject({ rating: 5, kinds: ['peaches', 'pears'] });
+    expect(pre.some((x) => x.foodItemId === 'canned-peaches')).toBe(false);
+  });
+
+  it('suggests a retake once after the upgrade that added kinds', async () => {
+    const m = await addMember({ displayName: 'Dan' }, db);
+    await completeSurvey(m.id, { tuna: 4 });
+    await db.meta.put({ key: 'catalogVersion', value: 12 });
+    await db.meta.delete('kinds13');
+    await ensureInitialized(db);
+    const latest = await latestSubmittedSurvey(m.id, db);
+    expect(latest?.needsRefresh).toBe(true);
+    expect(latest?.refreshReason).toMatch(/kinds/);
   });
 });

@@ -8,11 +8,11 @@
 //      and a varied set is chosen to cover everyone's calories for the horizon.
 // Dislikes, "would refuse" answers and lenient intolerances count against a food; they never
 // make an unsafe food safe or vice versa.
-import { checkFood } from './safety';
+import { checkFood, checkKinds } from './safety';
 import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-9';
+export const ENGINE_VERSION = 'engine-10';
 export const NEEDS_COOKING = 'Needs heat or cooking';
 export const ADMIN_REMOVED = 'Swapped out or left out by admin';
 /** Default cap on canned food in long-term plans with cooking (% of calories). */
@@ -44,6 +44,8 @@ export interface PlanMember {
   surveyId?: ID;
   surveyCompletedAt?: string;
   ratings: Record<ID, RatingCode>;
+  /** Kinds of generic foods this person likes: food id → kind ids. */
+  kinds?: Record<ID, string[]>;
   /** "Would refuse" answers the admin chose to stop applying. */
   ignoredRefusals: ID[];
   prep?: PrepTolerance;
@@ -130,7 +132,18 @@ export interface MemberVerdict {
   notes: string[];
 }
 
+/** One kind of a generic food on the shopping list: who likes it, and who it isn't safe for. */
+export interface KindNote {
+  id: string;
+  name: string;
+  icon?: string;
+  likedBy: string[];
+  notFor: string[];
+}
+
 export interface PlannedItem {
+  /** Kinds to buy (generic foods): who likes each, and which to skip for whom. */
+  kinds?: KindNote[];
   foodId: ID;
   name: string;
   category: FoodCategory;
@@ -258,12 +271,12 @@ export const STAPLES: Record<Tier, { label: string; options: ID[] }[]> = {
   short: [],
   medium: [
     { label: 'rice', options: ['white-rice', 'rice-pouch-rte'] },
-    { label: 'beans', options: ['black-beans-canned', 'kidney-beans-canned', 'pinto-beans-dry', 'refried-beans-canned'] },
+    { label: 'beans', options: ['canned-beans', 'pinto-beans-dry', 'refried-beans-canned'] },
     { label: 'potatoes', options: ['potato-flakes'] },
   ],
   long: [
     { label: 'rice', options: ['white-rice'] },
-    { label: 'beans', options: ['pinto-beans-dry', 'black-beans-canned', 'kidney-beans-canned'] },
+    { label: 'beans', options: ['pinto-beans-dry', 'canned-beans'] },
     { label: 'potatoes', options: ['potato-flakes'] },
   ],
 };
@@ -519,6 +532,19 @@ export function buildPlan(input: PlanInput): PlanResult {
   const cannedBudget = { left: cannedPct >= 100 ? Infinity : (targetCalories * cannedPct) / 100 };
   // Canned food carried over from the smaller plans uses up the canned budget first.
   for (const i of carried.values()) if (foods.find((f) => f.id === i.foodId)?.form === 'canned') cannedBudget.left -= i.calories;
+  // Which kinds of a generic food to buy: liked by whom, unsafe for whom.
+  const kindNotes = (f: FoodItem): KindNote[] | undefined => {
+    if (!f.kinds?.length) return undefined;
+    const perMember = members.map((m) => ({ m, checks: checkKinds(f, m.restrictions) }));
+    return f.kinds.map((k) => ({
+      id: k.id, name: k.name, icon: k.icon,
+      likedBy: members.filter((m) => m.kinds?.[f.id]?.includes(k.id)).map((m) => m.name),
+      notFor: perMember.flatMap(({ m, checks }) => {
+        const r = checks.find((c) => c.kind.id === k.id)?.result;
+        return r?.blocked.length ? [`${m.name} (${r.blocked.join(', ')})`] : [];
+      }),
+    }));
+  };
   type Scored = (typeof scored)[number];
   const pushItem = (x: Scored, b: Bucket, raw: number) => {
     const f = x.f;
@@ -557,7 +583,7 @@ export function buildPlan(input: PlanInput): PlanResult {
     }
     if (f.shelfLife.unopenedMonthsMax * 30 < days) flags.push(`Keeps up to ${fmtMonths(f.shelfLife.unopenedMonthsMax)}, shorter than this plan: rotate it`);
     items.push({
-      foodId: f.id, name: f.name, category: f.category, bucket: b, score: x.score, factors: x.factors,
+      foodId: f.id, name: f.name, category: f.category, bucket: b, score: x.score, factors: x.factors, kinds: kindNotes(f),
       servings, packages, leftoverServings: round1(packages * f.package.servingsPerPackage - servings),
       calories: Math.round(servings * f.nutrition.caloriesPerServing),
       packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,
@@ -812,7 +838,7 @@ export function buildPlan(input: PlanInput): PlanResult {
     for (const r of overrides.find((y) => y.foodId === f.id)?.unsafeFor ?? carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override: store it apart and labeled.`);
     for (const v of x.verdicts) if (v.status === 'avoid') flags.push(`${nameOf(v.memberId)}: ${v.notes.find((n) => n.includes('avoid')) ?? 'avoid when possible'}`);
     items.push({
-      foodId: f.id, name: f.name, category: f.category, bucket: 'pantry', score: x.score, factors: x.factors,
+      foodId: f.id, name: f.name, category: f.category, bucket: 'pantry', score: x.score, factors: x.factors, kinds: kindNotes(f),
       servings, packages, leftoverServings: round1(packages * f.package.servingsPerPackage - servings),
       calories: Math.round(servings * f.nutrition.caloriesPerServing),
       packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,

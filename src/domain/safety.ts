@@ -1,6 +1,6 @@
 // Hard safety matching between a food and a person's restrictions. Shared by the survey
 // (to hide unsafe items) and the planning engine (hard exclusions — scope §7 step 2).
-import type { FoodItem, MemberRestriction } from './types';
+import type { FoodItem, FoodKind, MemberRestriction } from './types';
 import { subjectLabel } from '../app/ui';
 
 export interface SafetyResult {
@@ -24,7 +24,39 @@ const ALLERGEN_ALIASES: Record<string, string[]> = {
 
 const norm = (s: string) => s.toLowerCase().trim();
 
+/** One kind of a generic food, as a food of its own (its allergens and tags). */
+export function kindFood(food: FoodItem, k: FoodKind): FoodItem {
+  return {
+    ...food, kinds: undefined, name: `${food.name}: ${k.name}`, examples: k.name, tags: k.tags ?? food.tags,
+    allergens: {
+      ...food.allergens,
+      contains: [...new Set([...food.allergens.contains, ...(k.contains ?? [])])],
+      mayContain: [...new Set([...(food.allergens.mayContain ?? []), ...(k.mayContain ?? [])])],
+    },
+  };
+}
+
+/** Each kind of a food with what makes it unsafe (blocked) or disliked for this person. */
+export function checkKinds(food: FoodItem, restrictions: MemberRestriction[]): { kind: FoodKind; result: SafetyResult }[] {
+  return (food.kinds ?? []).map((kind) => ({ kind, result: checkOne(kindFood(food, kind), restrictions) }));
+}
+
+/**
+ * Safety for a food. A generic food with kinds (e.g. canned soups) is safe for someone when
+ * at least one kind is: the shopping list then says which kinds to skip for them.
+ */
 export function checkFood(food: FoodItem, restrictions: MemberRestriction[]): SafetyResult {
+  const base = checkOne(food, restrictions);
+  if (!food.kinds?.length) return base;
+  // Each kind carries the food's own allergens plus its own, and its own diet tags.
+  const kinds = checkKinds(food, restrictions);
+  const safe = kinds.filter((x) => !x.result.blocked.length);
+  if (!safe.length) return { ...base, blocked: [...new Set(kinds.flatMap((x) => x.result.blocked))] };
+  const skip = kinds.filter((x) => x.result.blocked.length).map((x) => x.kind.name);
+  return { ...base, blocked: [], warnings: skip.length ? [...base.warnings, `Only some kinds are safe (skip: ${skip.join(', ')})`] : base.warnings };
+}
+
+function checkOne(food: FoodItem, restrictions: MemberRestriction[]): SafetyResult {
   const blocked: string[] = [];
   const warnings: string[] = [];
   const disliked: string[] = [];

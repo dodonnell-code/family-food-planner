@@ -217,6 +217,18 @@ export type Allergen =
   | 'corn'
   | 'mustard';
 
+/** A kind (variety) of a generic food, e.g. "Peaches" for canned fruit. Allergens/tags add to the food's own. */
+export interface FoodKind {
+  id: string;
+  name: string;
+  /** An emoji shown on the survey tile. */
+  icon?: string;
+  contains?: Allergen[];
+  mayContain?: Allergen[];
+  /** Replaces the food's tags for this kind (e.g. "beef" or "vegan"). */
+  tags?: string[];
+}
+
 export interface FoodItem {
   id: ID;
   name: string;
@@ -279,6 +291,8 @@ export interface FoodItem {
    * its preparation method implies (see domain/equipment.ts).
    */
   equipment?: string[];
+  /** Kinds the survey asks about and the shopping list breaks down (generic foods like canned fruit). */
+  kinds?: FoodKind[];
   /** Pantry items (baking & seasonings): catalog servings used per person per day, and the smallest plan that includes it. */
   pantry?: { perPersonDay: number; fromTier: Tier };
   /** Can act as a main meal component (vs. snack/side). */
@@ -328,6 +342,10 @@ export interface Survey {
   /** Profile changes the respondent suggests; become pending review items on submit. */
   suggestions?: Suggestion[];
   needsRefresh?: boolean;
+  /** Why a retake is suggested (shown to the admin); default: restrictions or membership changed. */
+  refreshReason?: string;
+  /** A retake that started with the previous survey's answers filled in. */
+  prefilledFrom?: ID;
   /** Admin override: "Would refuse" answers (food ids) to stop applying until the next survey. */
   ignoredRefusals?: ID[];
   updatedAt: ISODate;
@@ -345,6 +363,8 @@ export interface SurveyAnswer {
   rating: RatingCode;
   onlyPreparedCertainWay?: boolean;
   prepNotes?: string;
+  /** Kinds of this food the person likes (ids from FoodItem.kinds). */
+  kinds?: string[];
   comment?: string;
 }
 

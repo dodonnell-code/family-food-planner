@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
-import { allergenLine, fmtDate, nutritionFacts } from '../../app/ui';
+import { allergenLine, fmtDate, kindsSummary, nutritionFacts } from '../../app/ui';
 import { setHandPick, setPlanOverride, setPlanPicks, setPlanQuantity, setPlanSubstitution } from '../../data/adminRepo';
 import { CATEGORY_LABELS } from './Catalog';
 import { FamilyRequests } from './Requests';
@@ -215,6 +215,12 @@ function ItemRow({ i, names, r, foods, tier }: { i: PlannedItem; names: Map<stri
         {i.prepWaterGallons > 0 && <span className="badge">{num(i.prepWaterGallons)} gal water</span>}
       </div>
       {i.flags.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 20, color: 'var(--warn)' }}>{i.flags.map((f) => <li key={f}>{f}</li>)}</ul>}
+      {kindsSummary(i.kinds) && (
+        <div className="small">
+          <div><strong>Kinds:</strong> {kindsSummary(i.kinds)!.buy}</div>
+          {kindsSummary(i.kinds)!.skip.length > 0 && <div style={{ color: 'var(--danger)' }}><strong>Skip:</strong> {kindsSummary(i.kinds)!.skip.join(' · ')}</div>}
+        </div>
+      )}
       <NutritionLine i={i} foods={foods} />
       {(allergenLine(i.allergens) || i.safetyNotes) && (
         <div className="small muted">{allergenLine(i.allergens) && <><strong>Check labels:</strong> {allergenLine(i.allergens)}. </>}{i.safetyNotes}</div>

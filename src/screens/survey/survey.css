@@ -20,3 +20,14 @@
 .rating .emoji { font-size: 1.7rem; line-height: 1; }
 .rating.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .rating.blocked.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* "Which kinds do you like?" tiles */
+.kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.kind {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 92px; padding: 10px 8px; border-radius: 14px; text-align: center; font-weight: 600; line-height: 1.2;
+}
+.kind .emoji { font-size: 2rem; line-height: 1; }
+.kind.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.kind .check { position: absolute; top: 6px; right: 10px; font-weight: 800; }
+@media (max-width: 480px) { .kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

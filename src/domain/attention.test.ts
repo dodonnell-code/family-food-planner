@@ -19,7 +19,7 @@ describe('needs attention', () => {
     expect(ids).toEqual(expect.arrayContaining(['nosurvey', 'placeholder', 'unverified', 'backup']));
 
     const s = await startOrResumeSurvey(z.id, db);
-    await saveAnswer(s.id, 'tuna-canned', 4, {}, db);
+    await saveAnswer(s.id, 'tuna', 4, {}, db);
     await submitSurvey(s.id, db);
     ids = (await computeAttention(db)).map((i) => i.id.split(':')[0]);
     expect(ids).not.toContain('nosurvey');

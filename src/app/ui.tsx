@@ -69,6 +69,19 @@ export function nutritionFacts(n: { servingDesc: string; caloriesPerServing: num
   return { text: [`${f(n.caloriesPerServing)} kcal`, ...have].join(' · '), missing: all.filter(([, v]) => v === undefined).map(([k]) => k) };
 }
 
+/** The kinds line for a generic food on the shopping list. */
+export function kindsSummary(kinds?: { name: string; icon?: string; likedBy: string[]; notFor: string[] }[]) {
+  if (!kinds?.length) return undefined;
+  const label = (k: { name: string; icon?: string }) => `${k.icon ? `${k.icon} ` : ''}${k.name}`;
+  const safe = kinds.filter((k) => !k.notFor.length);
+  const liked = safe.filter((k) => k.likedBy.length).sort((a, b) => b.likedBy.length - a.likedBy.length);
+  const buy = liked.length
+    ? `Buy a mix of: ${liked.map((k) => `${label(k)} (${k.likedBy.join(', ')})`).join(' · ')}`
+    : `No kinds picked in surveys yet. Any of: ${safe.map(label).join(', ')}`;
+  const skip = kinds.filter((k) => k.notFor.length).map((k) => `${label(k)}: not safe for ${k.notFor.join('; ')}`);
+  return { buy, skip };
+}
+
 export function allergenLine(a?: { contains: string[]; mayContain: string[] }): string {
   if (!a) return '';
   const parts: string[] = [];

@@ -18,19 +18,23 @@ const all5 = (ids: string[]): Record<string, RatingCode> => Object.fromEntries(i
 
 describe('planner: hard safeguards', () => {
   it('never stocks a food that conflicts with anyone’s allergy, however much others like it', () => {
-    const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings: all5(['peanut-butter', 'pb-packets']) }));
+    const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings: all5(['peanut-butter', 'mixed-nuts']) }));
     const alice = member('alice', { restrictions: [restr('alice', 'peanut')] });
     const plan = buildPlan(input([...fans, alice]));
     expect(plan.items.map((i) => i.foodId)).not.toContain('peanut-butter');
     const ex = plan.excluded.find((e) => e.foodId === 'peanut-butter')!;
     expect(ex.reasons).toEqual([{ memberId: 'alice', reasons: ['Contains Peanut'] }]);
     // "May contain" is also kept out for an allergy.
-    expect(plan.excluded.some((e) => e.foodId === 'granola-bars')).toBe(true);
+    expect(plan.excluded.some((e) => e.foodId === 'mixed-nuts')).toBe(true);
+    // A generic food stays when some kinds are safe; the unsafe kinds are listed to skip.
+    const bars = buildPlan(input([...fans, alice], 'medium', { include: ['bars'] })).items.find((i) => i.foodId === 'bars')!;
+    expect(bars.kinds!.find((k) => k.id === 'peanut-butter')!.notFor[0]).toMatch(/^alice/);
+    expect(bars.kinds!.find((k) => k.id === 'fruit-grain')!.notFor).toEqual([]);
   });
 
   it('honours "can’t eat it" survey answers', () => {
-    const plan = buildPlan(input([member('a', { ratings: { 'chili-canned': 'blocked' } }), member('b', { ratings: all5(['chili-canned']) })]));
-    expect(plan.items.some((i) => i.foodId === 'chili-canned')).toBe(false);
+    const plan = buildPlan(input([member('a', { ratings: { 'canned-chili': 'blocked' } }), member('b', { ratings: all5(['canned-chili']) })]));
+    expect(plan.items.some((i) => i.foodId === 'canned-chili')).toBe(false);
   });
 
   it('no-cook plans only use food that needs no heat', () => {
@@ -50,10 +54,10 @@ describe('planner: preferences', () => {
   });
 
   it('a dislike pulls a food below a safe alternative instead of being outvoted', () => {
-    const ratings = all5(['tuna-pouch', 'chicken-canned']);
+    const ratings = all5(['tuna', 'chicken-canned']);
     const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings }));
     const picky = member('d', { ratings: { 'chicken-canned': 4 }, restrictions: [restr('d', 'food:tuna', { type: 'dislike' })] });
-    const tuna = scoreFood(food('tuna-pouch'), [...fans, picky], 'medium', 14).score;
+    const tuna = scoreFood(food('tuna'), [...fans, picky], 'medium', 14).score;
     const chicken = scoreFood(food('chicken-canned'), [...fans, picky], 'medium', 14).score;
     expect(chicken).toBeGreaterThan(tuna);
   });
@@ -137,7 +141,7 @@ describe('planner: quantities, water and needs', () => {
   });
 
   it('is deterministic', () => {
-    const i = input([member('a', { ratings: all5(['chili-canned']) }), member('b')]);
+    const i = input([member('a', { ratings: all5(['canned-chili']) }), member('b')]);
     expect(buildPlan(i)).toEqual(buildPlan(i));
   });
 });
@@ -273,11 +277,11 @@ describe('planner: admin swaps', () => {
     const before = buildNestedPlan(input(fam(), 'long'), chain);
     const target = before.items.find((i) => i.foodId === 'almond-butter') ?? before.items.find((i) => i.bucket === 'snacks')!;
     const replacement = foods.find((f) => f.active && f.category === 'fat-snack' && !before.items.some((i) => i.foodId === f.id) && f.nutrition.caloriesPerServing > 0 && f.allergens.contains.length === 0)!;
-    const subs = { [target.foodId]: replacement.id, 'canned-peaches': '' };
+    const subs = { [target.foodId]: replacement.id, 'canned-fruit': '' };
     for (const tier of ['short', 'medium', 'long'] as Tier[]) {
       const p = buildNestedPlan(input(fam(), tier, { substitutions: subs }), chain);
       expect(p.items.some((i) => i.foodId === target.foodId)).toBe(false);
-      expect(p.items.some((i) => i.foodId === 'canned-peaches')).toBe(false);
+      expect(p.items.some((i) => i.foodId === 'canned-fruit')).toBe(false);
       expect(p.excluded.find((e) => e.foodId === target.foodId)?.scenarioOnly).toMatch(/admin/);
       if (tier === 'long') {
         const r = p.items.find((i) => i.foodId === replacement.id)!;
@@ -304,7 +308,7 @@ describe('planner: preparedness staples', () => {
       const ids = p.items.map((i) => i.foodId);
       expect(ids, tier).toContain('white-rice');
       expect(ids, tier).toContain('potato-flakes');
-      expect(ids.some((id) => ['black-beans-canned', 'kidney-beans-canned', 'pinto-beans-dry', 'refried-beans-canned'].includes(id)), tier).toBe(true);
+      expect(ids.some((id) => ['canned-beans', 'pinto-beans-dry', 'refried-beans-canned'].includes(id)), tier).toBe(true);
       expect(p.items.find((i) => i.foodId === 'white-rice')!.why[0]).toBe('Preparedness staple');
     }
   });
@@ -359,10 +363,10 @@ describe('planner: variety, favorites and a balanced diet', () => {
   const okWithEverything = (fav: string[]) => Object.fromEntries(foods.map((f) => [f.id, (fav.includes(f.id) ? 5 : 3) as RatingCode]));
 
   it('puts family favorites in every plan, including the 3-day one', () => {
-    const fam = five(okWithEverything(['mac-cheese-cup', 'canned-peaches', 'tuna-canned']));
+    const fam = five(okWithEverything(['mac-cheese-cup', 'canned-fruit', 'tuna']));
     for (const tier of ['short', 'medium', 'long'] as Tier[]) {
       const p = buildPlan(input(fam, tier, { scenario: 'limited-cook' }));
-      for (const id of ['mac-cheese-cup', 'canned-peaches']) {
+      for (const id of ['mac-cheese-cup', 'canned-fruit']) {
         const item = p.items.find((i) => i.foodId === id);
         expect(item, `${id} in ${tier}`).toBeDefined();
         expect(item!.why[0]).toBe('Family favorite');

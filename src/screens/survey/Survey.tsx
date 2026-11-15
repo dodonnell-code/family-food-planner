@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { db, uid } from '../../data/db';
 import { inProgressSurvey, saveAnswer, submitSurvey, updateSurveyProgress } from '../../data/repo';
-import { checkFood, isExcluded } from '../../domain/safety';
+import { checkFood, checkKinds, isExcluded } from '../../domain/safety';
 import { firstName, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
 import type { FoodCategory, FoodItem, Member, MemberRestriction, PrepTolerance, RatingCode, RestrictionType, Suggestion, Survey as SurveyT, SurveyAnswer } from '../../domain/types';
 import { useSession } from '../../app/session';
@@ -13,9 +13,9 @@ const CATEGORIES: { id: FoodCategory; title: string; blurb: string }[] = [
   { id: 'protein', title: 'Meat, fish & protein', blurb: 'Canned, pouch and dried proteins.' },
   { id: 'legume', title: 'Beans & lentils', blurb: 'Canned beans are ready to eat. Dry ones need cooking.' },
   { id: 'grain', title: 'Grains, bread & cereal', blurb: 'Crackers, cereal, rice, pasta, oats.' },
-  { id: 'fruit', title: 'Fruit', blurb: 'Canned, dried and freeze-dried fruit.' },
-  { id: 'vegetable', title: 'Vegetables', blurb: 'Canned, pouch and dried vegetables.' },
-  { id: 'meal', title: 'Ready meals & soups', blurb: 'Chili, stews, soups, pouches and freeze-dried meals.' },
+  { id: 'fruit', title: 'Fruit', blurb: 'Canned, freeze-dried and applesauce. Tell us which kinds you like.' },
+  { id: 'vegetable', title: 'Vegetables', blurb: 'Canned and freeze-dried. Tell us which kinds you like.' },
+  { id: 'meal', title: 'Ready meals & soups', blurb: 'Soups, chili, pouches and freeze-dried meals. Tell us which kinds you like.' },
   { id: 'fat-snack', title: 'Snacks & spreads', blurb: 'Nut butters, bars, nuts and treats.' },
   { id: 'dairy-alt', title: 'Milk & milk alternatives', blurb: 'Shelf-stable and powdered.' },
   { id: 'beverage', title: 'Drinks', blurb: 'Juice, drink mixes, coffee, tea and cocoa.' },
@@ -112,7 +112,7 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
 
       <main className="survey-body" ref={bodyRef}>
         <div className="survey-content">
-        {cur.kind === 'intro' && <Intro name={name} />}
+        {cur.kind === 'intro' && <Intro name={name} prefilled={!!survey.prefilledFrom} />}
         {cur.kind === 'category' && (
           <CategoryStep cat={cur.cat} foods={foods.filter((f) => f.category === cur.cat.id)} restrictions={restrictions} answers={answerMap} surveyId={survey.id} />
         )}
@@ -136,10 +136,11 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
   );
 }
 
-function Intro({ name }: { name: string }) {
+function Intro({ name, prefilled }: { name: string; prefilled: boolean }) {
   return (
     <div className="stack" style={{ maxWidth: 640 }}>
       <h1>Hi {name}! 👋</h1>
+      {prefilled && <p className="notice ok" style={{ margin: 0 }}>Your answers from last time are already filled in. Just check them, change anything that’s different, and pick the <strong>kinds</strong> you like (new questions, like which fruits and soups).</p>}
       <p>We’re planning which foods to keep at home in case of an emergency, like a power cut or a storm. Your answers help us store food <strong>you</strong> will actually want to eat.</p>
       <ul className="stack" style={{ paddingLeft: 20, gap: 6 }}>
         <li>It takes about 10–15 minutes.</li>
@@ -169,7 +170,7 @@ function CategoryStep({ cat, foods, restrictions, answers, surveyId }: {
         </div>
         <span className="badge">{rated} of {shown.length} answered</span>
       </div>
-      {shown.map(({ f }) => <FoodCard key={f.id} food={f} answer={answers.get(f.id)} surveyId={surveyId} />)}
+      {shown.map(({ f }) => <FoodCard key={f.id} food={f} answer={answers.get(f.id)} surveyId={surveyId} restrictions={restrictions} />)}
       {disliked.length > 0 && (
         <details className="card">
           <summary className="muted">{disliked.length} food{disliked.length === 1 ? '' : 's'} skipped because you don’t like {disliked.length === 1 ? 'it' : 'them'}</summary>
@@ -186,14 +187,24 @@ function CategoryStep({ cat, foods, restrictions, answers, surveyId }: {
   );
 }
 
-function FoodCard({ food, answer, surveyId }: { food: FoodItem; answer?: SurveyAnswer; surveyId: string }) {
+function FoodCard({ food, answer, surveyId, restrictions }: { food: FoodItem; answer?: SurveyAnswer; surveyId: string; restrictions: MemberRestriction[] }) {
   const [certainWay, setCertainWay] = useState(!!answer?.onlyPreparedCertainWay);
   const [note, setNote] = useState(answer?.prepNotes ?? '');
   const rating = answer?.rating;
   const preference = typeof rating === 'number';
+  const liked = new Set(answer?.kinds ?? []);
+  // Only kinds that are safe for this person are offered.
+  const kinds = food.kinds?.length ? checkKinds(food, restrictions).filter((x) => !x.result.blocked.length).map((x) => x.kind) : [];
+  const showKinds = kinds.length > 0 && typeof rating === 'number' && rating >= 3;
 
-  const rate = (v: RatingCode) => saveAnswer(surveyId, food.id, v, { onlyPreparedCertainWay: certainWay && typeof v === 'number', prepNotes: note || undefined });
-  const saveExtra = (cw: boolean, n: string) => rating !== undefined && saveAnswer(surveyId, food.id, rating, { onlyPreparedCertainWay: cw, prepNotes: n || undefined });
+  const rate = (v: RatingCode) => saveAnswer(surveyId, food.id, v, { onlyPreparedCertainWay: certainWay && typeof v === 'number', prepNotes: note || undefined, kinds: typeof v === 'number' && v >= 3 ? answer?.kinds : undefined });
+  const saveExtra = (cw: boolean, n: string) => rating !== undefined && saveAnswer(surveyId, food.id, rating, { onlyPreparedCertainWay: cw, prepNotes: n || undefined, kinds: answer?.kinds });
+  const toggleKind = (id: string) => {
+    if (rating === undefined) return;
+    const next = new Set(liked);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    saveAnswer(surveyId, food.id, rating, { onlyPreparedCertainWay: certainWay, prepNotes: note || undefined, kinds: kinds.filter((k) => next.has(k.id)).map((k) => k.id) });
+  };
 
   return (
     <article className="card stack food-card" aria-labelledby={`f-${food.id}`}>
@@ -205,6 +216,7 @@ function FoodCard({ food, answer, surveyId }: { food: FoodItem; answer?: SurveyA
           {food.examples && <span className="muted">e.g. {food.examples}</span>}
         </div>
       </div>
+      {kinds.length > 0 && <p style={{ margin: 0 }}><strong>Do you like {food.name.toLowerCase()}?</strong></p>}
       <div className="ratings" role="radiogroup" aria-label={`How do you feel about ${food.name}?`}>
         {RATINGS.map((r) => (
           <button key={String(r.v)} role="radio" aria-checked={rating === r.v} className={`rating ${rating === r.v ? 'on' : ''} ${r.v === 'blocked' ? 'blocked' : ''}`} onClick={() => rate(r.v)}>
@@ -213,6 +225,20 @@ function FoodCard({ food, answer, surveyId }: { food: FoodItem; answer?: SurveyA
           </button>
         ))}
       </div>
+      {showKinds && (
+        <div className="stack" style={{ gap: 8 }}>
+          <p style={{ margin: 0 }}><strong>Which kinds do you like?</strong> <span className="muted small">Tap all that apply.</span></p>
+          <div className="kinds" role="group" aria-label={`Kinds of ${food.name} you like`}>
+            {kinds.map((k) => (
+              <button key={k.id} type="button" className={`kind ${liked.has(k.id) ? 'on' : ''}`} aria-pressed={liked.has(k.id)} onClick={() => toggleKind(k.id)}>
+                <span className="emoji" aria-hidden>{k.icon ?? '🍽️'}</span>
+                <span>{k.name}</span>
+                {liked.has(k.id) && <span className="check" aria-hidden>✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {rating === 'blocked' && <p className="small notice" style={{ margin: 0 }}>Thanks for telling us. An adult will check this and make sure it’s never planned for you.</p>}
       {preference && (
         <div className="stack" style={{ gap: 8 }}>
