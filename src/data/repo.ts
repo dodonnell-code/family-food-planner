@@ -238,6 +238,27 @@ export async function deactivateCondition(id: ID, database: PlannerDB = defaultD
   await recordChange(database, { entity: 'condition', entityId: id, memberId: c?.memberId, op: 'deactivate', before: { active: true }, after: { active: false } });
 }
 
+/** Edit a restriction in place (e.g. allergy → intolerance, severity, cross-contact, note). */
+export async function updateRestriction(
+  id: ID,
+  patch: Partial<Pick<MemberRestriction, 'type' | 'severity' | 'strictness' | 'cautionCrossContact' | 'verifiedAt' | 'adminNoteEnc'>>,
+  database: PlannerDB = defaultDb,
+) {
+  const r = await database.restrictions.get(id);
+  if (!r) throw new Error('Restriction not found');
+  const keys = ['type', 'severity', 'strictness', 'cautionCrossContact', 'verifiedAt', 'adminNoteEnc'] as const;
+  const next: MemberRestriction = { ...r, ...patch };
+  // Fields that don't apply to the new type are cleared.
+  if (next.type === 'dislike') Object.assign(next, { severity: undefined, strictness: undefined, cautionCrossContact: false });
+  else if (next.type === 'intolerance') next.severity = undefined;
+  else next.strictness = undefined;
+  await database.restrictions.put(next);
+  const latest = await latestSubmittedSurvey(r.memberId, database);
+  if (latest) await database.surveys.update(latest.id, { needsRefresh: true, refreshReason: undefined });
+  await audit('restriction.update', { memberId: r.memberId, restrictionId: id }, r.subject, database);
+  await recordChange(database, { entity: 'restriction', entityId: id, memberId: r.memberId, op: 'update', before: pick(r, [...keys]), after: pick(next, [...keys]) });
+}
+
 export async function deactivateRestriction(id: ID, database: PlannerDB = defaultDb) {
   const r = await database.restrictions.get(id);
   await database.restrictions.update(id, { active: false });
@@ -254,6 +275,26 @@ export async function latestSubmittedSurvey(memberId: ID, database: PlannerDB = 
 export async function inProgressSurvey(memberId: ID, database: PlannerDB = defaultDb): Promise<Survey | undefined> {
   const all = await database.surveys.where('memberId').equals(memberId).toArray();
   return all.find((s) => s.status === 'in-progress');
+}
+
+/** The admin decided no retake is needed (e.g. after a small restriction change). */
+export async function dismissSurveyRefresh(memberId: ID, database: PlannerDB = defaultDb) {
+  const latest = await latestSubmittedSurvey(memberId, database);
+  if (!latest?.needsRefresh) return;
+  await database.surveys.update(latest.id, { needsRefresh: false, refreshReason: undefined });
+  await audit('survey.refresh.dismiss', { memberId, surveyId: latest.id }, undefined, database);
+}
+
+/**
+ * Reset a person's survey: their answers stop counting (the plan uses safe defaults for them)
+ * until they take it again. Old surveys stay in history, marked "reset".
+ */
+export async function resetSurvey(memberId: ID, database: PlannerDB = defaultDb) {
+  await database.transaction('rw', [database.surveys, database.audit], async () => {
+    const all = await database.surveys.where('memberId').equals(memberId).toArray();
+    for (const s of all) if (s.status === 'submitted' || s.status === 'in-progress') await database.surveys.update(s.id, { status: 'reset', needsRefresh: false, updatedAt: now() });
+    await audit('survey.reset', { memberId }, undefined, database);
+  });
 }
 
 /** Resume an in-progress survey, or start a new version (admin-permitted). */

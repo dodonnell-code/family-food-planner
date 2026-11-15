@@ -18,6 +18,9 @@ import {
   submitSurvey,
   updateMember,
   updateSurveyProgress,
+  updateRestriction,
+  dismissSurveyRefresh,
+  resetSurvey,
 } from './repo';
 import { buildSeedCatalog } from './seedCatalog';
 import { loadPlanInput } from './planRepo';
@@ -262,5 +265,35 @@ describe('generic foods with kinds', () => {
     const latest = await latestSubmittedSurvey(m.id, db);
     expect(latest?.needsRefresh).toBe(true);
     expect(latest?.refreshReason).toMatch(/kinds/);
+  });
+});
+
+describe('admin survey and restriction controls', () => {
+  it('edits a restriction in place (allergy → avoid-when-possible intolerance)', async () => {
+    const m = await addMember({ displayName: 'Sam' }, db);
+    const r = await addRestriction({ memberId: m.id, type: 'allergy', subject: 'milk', severity: 'moderate', cautionCrossContact: true }, db);
+    await updateRestriction(r.id, { type: 'intolerance', strictness: 'avoid', cautionCrossContact: false }, db);
+    const after = (await db.restrictions.get(r.id))!;
+    expect(after).toMatchObject({ type: 'intolerance', strictness: 'avoid', subject: 'milk', active: true, cautionCrossContact: false });
+    expect(after.severity).toBeUndefined();
+    expect(await db.restrictions.where('memberId').equals(m.id).count()).toBe(1);
+  });
+
+  it('dismisses a retake suggestion, and resets a survey so its answers stop counting', async () => {
+    const m = await addMember({ displayName: 'Dan' }, db);
+    await completeSurvey(m.id, { tuna: 5 });
+    await addRestriction({ memberId: m.id, type: 'allergy', subject: 'egg' }, db);
+    expect((await latestSubmittedSurvey(m.id, db))?.needsRefresh).toBe(true);
+    await dismissSurveyRefresh(m.id, db);
+    expect((await latestSubmittedSurvey(m.id, db))?.needsRefresh).toBe(false);
+
+    await resetSurvey(m.id, db);
+    expect(await latestSubmittedSurvey(m.id, db)).toBeUndefined();
+    const input = await loadPlanInput('medium', 'limited-cook', null, db);
+    expect(input!.members[0].ratings).toEqual({});
+    expect(input!.members[0].restrictions.map((x) => x.subject)).toEqual(['egg']);
+    // A new survey can be taken afterwards.
+    const v = await completeSurvey(m.id, { tuna: 3 });
+    expect((await latestSubmittedSurvey(m.id, db))?.id).toBe(v.id);
   });
 });

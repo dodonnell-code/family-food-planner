@@ -307,7 +307,8 @@ export interface FoodItem {
 /** 5..1 preference; 'unknown' = not tried; 'blocked' = cannot eat (safety, not preference). */
 export type RatingCode = 5 | 4 | 3 | 2 | 1 | 'unknown' | 'blocked';
 
-export type SurveyStatus = 'in-progress' | 'submitted' | 'superseded';
+/** 'reset': the admin cleared it; its answers no longer count. */
+export type SurveyStatus = 'in-progress' | 'submitted' | 'superseded' | 'reset';
 
 export interface PrepTolerance {
   cold: boolean;

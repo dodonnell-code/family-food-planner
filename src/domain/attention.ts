@@ -17,6 +17,8 @@ export interface AttentionItem {
   /** In-app route to resolve it. */
   link?: string;
   action?: 'start-survey';
+  /** Can be dismissed as "no retake needed". */
+  dismissRefresh?: boolean;
 }
 
 const fname = (m?: Pick<Member, 'displayName' | 'preferredName'>) => (m ? m.preferredName || m.displayName.split(/\s+/)[0] : 'Someone');
@@ -45,7 +47,7 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
       items.push({ id: `inprogress:${m.id}`, severity: 'medium', memberId: m.id, link: `/admin/members/${m.id}`,
         title: `${fname(m)}'s survey is unfinished`, detail: 'They can continue it from the welcome screen.' });
     } else if (latest?.needsRefresh && !inProgress) {
-      items.push({ id: `refresh:${m.id}`, severity: 'medium', memberId: m.id, action: 'start-survey', link: `/admin/members/${m.id}`,
+      items.push({ id: `refresh:${m.id}`, severity: 'medium', memberId: m.id, action: 'start-survey', dismissRefresh: true, link: `/admin/members/${m.id}`,
         title: `${fname(m)}'s survey may be outdated`, detail: latest.refreshReason ?? 'Their restrictions or membership changed after they last took it. Consider a retake.' });
     }
   }

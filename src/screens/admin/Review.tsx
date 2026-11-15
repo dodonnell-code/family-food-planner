@@ -9,6 +9,7 @@ import { changeTitle, diffRows, type DisplayValue, type Lookups } from '../../do
 import type { ChangeRecord } from '../../domain/types';
 import { useSession } from '../../app/session';
 import { useStartSurvey } from './AdminLayout';
+import { dismissSurveyRefresh } from '../../data/repo';
 
 const TONE = { high: 'danger', medium: 'warn', low: '' } as const;
 const WORD = { high: 'Important', medium: 'Soon', low: 'FYI' } as const;
@@ -28,6 +29,7 @@ export function AttentionList({ items, limit }: { items: AttentionItem[]; limit?
           </div>
           <div className="row">
             {it.action === 'start-survey' && it.memberId && <button onClick={() => startSurvey(it.memberId!)}>Start survey</button>}
+            {it.dismissRefresh && it.memberId && <button className="ghost" onClick={() => dismissSurveyRefresh(it.memberId!)}>No retake needed</button>}
             {it.link && <Link to={it.link} className="btn">Open</Link>}
           </div>
         </div>

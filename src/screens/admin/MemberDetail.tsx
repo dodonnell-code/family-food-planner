@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { db, now } from '../../data/db';
-import { addRestrictions, deactivateRestriction, mergeMembers, setMemberStatus, setRefusalIgnored, updateMember } from '../../data/repo';
+import { addRestrictions, deactivateRestriction, dismissSurveyRefresh, mergeMembers, resetSurvey, setMemberStatus, setRefusalIgnored, updateMember, updateRestriction } from '../../data/repo';
 import { surveyRefusals } from '../../domain/preferences';
 import { decryptString, encryptString } from '../../data/crypto';
 import { useSession } from '../../app/session';
@@ -48,7 +48,7 @@ function MemberEditor({ member }: { member: Member }) {
       <NeedsCard member={member} />
       <CustomFieldsCard member={member} />
       <PrivateNotesCard member={member} onSaved={() => flash('Private note saved (encrypted)')} />
-      <SurveyHistoryCard memberId={member.id} />
+      <SurveyHistoryCard member={member} />
       <StatusCard member={member} onMerged={() => nav('/admin/members')} />
     </div>
   );
@@ -297,6 +297,8 @@ function RestrictionsCard({ member }: { member: Member }) {
 }
 
 function RestrictionRow({ r, note }: { r: MemberRestriction; note?: string }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) return <RestrictionEditor r={r} note={note} done={() => setEditing(false)} />;
   return (
     <div className="spread">
       <div>
@@ -309,8 +311,75 @@ function RestrictionRow({ r, note }: { r: MemberRestriction; note?: string }) {
         {note && <div className="small muted">{note}</div>}
       </div>
       {r.active && (
-        <button className="danger" onClick={() => confirm(`Remove the ${subjectLabel(r.subject)} restriction? It will be kept in history.`) && deactivateRestriction(r.id)}>Remove</button>
+        <span className="row" style={{ gap: 6 }}>
+          <button onClick={() => setEditing(true)}>Edit</button>
+          <button className="danger" onClick={() => confirm(`Remove the ${subjectLabel(r.subject)} restriction? It will be kept in history.`) && deactivateRestriction(r.id)}>Remove</button>
+        </span>
       )}
+    </div>
+  );
+}
+
+/** Change a restriction in place: its type, how strict or severe it is, cross-contact, and the note. */
+function RestrictionEditor({ r, note, done }: { r: MemberRestriction; note?: string; done: () => void }) {
+  const { dek } = useSession();
+  const [type, setType] = useState<RestrictionType>(r.type);
+  const [severity, setSeverity] = useState<'' | 'mild' | 'moderate' | 'severe'>(r.severity ?? '');
+  const [strictness, setStrictness] = useState<Strictness>(r.strictness ?? 'strict');
+  const [cross, setCross] = useState(!!r.cautionCrossContact);
+  const [verified, setVerified] = useState(!!r.verifiedAt);
+  const [text, setText] = useState(note ?? '');
+  const [err, setErr] = useState('');
+  const pref = isPreferenceOnly(type);
+  const intol = type === 'intolerance';
+  async function save() {
+    try {
+      const noteEnc = !dek ? r.adminNoteEnc : text.trim() ? (text.trim() === (note ?? '') ? r.adminNoteEnc : await encryptString(dek, text.trim())) : undefined;
+      await updateRestriction(r.id, {
+        type,
+        severity: pref || intol ? undefined : severity || undefined,
+        strictness: intol ? strictness : undefined,
+        cautionCrossContact: pref || (intol && strictness !== 'strict') ? false : cross,
+        verifiedAt: pref || verified ? r.verifiedAt ?? now() : undefined,
+        adminNoteEnc: pref ? undefined : noteEnc,
+      });
+      done();
+    } catch (e) { setErr((e as Error).message); }
+  }
+  return (
+    <div className="stack" style={{ gap: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 12 }}>
+      <strong>Edit: {subjectLabel(r.subject)}</strong>
+      <label style={{ maxWidth: 360 }}>Type
+        <select value={type} onChange={(e) => setType(e.target.value as RestrictionType)}>
+          {RESTRICTION_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+        </select>
+      </label>
+      {intol && (
+        <fieldset className="stack" style={{ border: 'none', padding: 0, margin: 0, gap: 8 }}>
+          <legend style={{ fontWeight: 600, marginBottom: 6 }}>How strict?</legend>
+          {STRICTNESS.map((o) => (
+            <label key={o.code} className="inline" style={{ alignItems: 'flex-start' }}>
+              <input type="radio" name={`strict-${r.id}`} checked={strictness === o.code} onChange={() => setStrictness(o.code)} style={{ width: 24, height: 24, marginTop: 2 }} />
+              <span><strong>{o.label}</strong><br /><span className="small muted" style={{ fontWeight: 400 }}>{o.help}</span></span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {!pref && !intol && (
+        <label style={{ maxWidth: 260 }}>Severity
+          <select value={severity} onChange={(e) => setSeverity(e.target.value as typeof severity)}>
+            <option value="">Not specified</option><option value="mild">Mild</option><option value="moderate">Moderate</option><option value="severe">Severe</option>
+          </select>
+        </label>
+      )}
+      {!pref && (!intol || strictness === 'strict') && <label className="inline"><input type="checkbox" checked={cross} onChange={(e) => setCross(e.target.checked)} /> Cross-contact is a concern (“may contain” foods are left out too)</label>}
+      {!pref && <label className="inline"><input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} /> Admin-confirmed (respondent cannot remove it)</label>}
+      {!pref && <label>Private note (encrypted)<textarea value={text} onChange={(e) => setText(e.target.value)} disabled={!dek} /></label>}
+      {err && <div className="notice danger" role="alert">{err}</div>}
+      <div className="row" style={{ gap: 8 }}>
+        <button className="primary" onClick={save}>Save changes</button>
+        <button className="ghost" onClick={done}>Cancel</button>
+      </div>
     </div>
   );
 }
@@ -339,12 +408,27 @@ function PrivateNotesCard({ member, onSaved }: { member: Member; onSaved: () => 
   );
 }
 
-function SurveyHistoryCard({ memberId }: { memberId: string }) {
+function SurveyHistoryCard({ member }: { member: Member }) {
+  const memberId = member.id;
   const surveys = useLiveQuery(() => db.surveys.where('memberId').equals(memberId).toArray(), [memberId]);
   const sorted = (surveys ?? []).sort((a, b) => b.version - a.version);
+  const latest = sorted.find((s) => s.status === 'submitted');
+  const live = sorted.some((s) => s.status === 'submitted' || s.status === 'in-progress');
+  const name = member.preferredName || member.displayName.split(' ')[0];
   return (
     <section className="card stack">
-      <h2>Survey history</h2>
+      <div className="spread">
+        <h2 style={{ margin: 0 }}>Survey</h2>
+        <span className="row" style={{ gap: 6 }}>
+          {live && <button className="danger" onClick={() => window.confirm(`Reset ${name}’s survey?\n\nTheir answers will stop counting in the plan (safe defaults are used for them) until they take it again. Their restrictions aren’t affected, and the old survey stays in the history.`) && resetSurvey(memberId)}>Reset survey</button>}
+        </span>
+      </div>
+      {latest?.needsRefresh && (
+        <div className="notice spread" style={{ gap: 8 }}>
+          <span className="small">{latest.refreshReason ?? 'Their restrictions or membership changed after they last took it, so a retake is suggested.'}</span>
+          <button className="ghost small" onClick={() => dismissSurveyRefresh(memberId)}>No retake needed</button>
+        </div>
+      )}
       {sorted.length === 0 && <p className="muted">No surveys yet.</p>}
       <div className="list">
         {sorted.map((s) => (
