@@ -3,7 +3,7 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import { decryptString } from './crypto';
 import { getCatalogVersion, isOnRoster, latestSubmittedSurvey } from './repo';
-import { buildPlan, ENGINE_VERSION, type PlanInput, type PlanMember, type PlanResult } from '../domain/planner';
+import { buildNestedPlan, ENGINE_VERSION, type PlanInput, type PlanMember, type PlanResult } from '../domain/planner';
 import type { ID, PlanSnapshot, PlanningScenario, RatingCode, Scenario, Tier } from '../domain/types';
 
 export const TIER_LABEL: Record<Tier, string> = { short: 'Short term', medium: 'Medium term', long: 'Long term' };
@@ -46,7 +46,9 @@ export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoK
 
 export async function computePlan(tier: Tier, scenario: Scenario, dek: CryptoKey | null, database: PlannerDB = defaultDb) {
   const input = await loadPlanInput(tier, scenario, dek, database);
-  return { input, result: buildPlan(input) };
+  const d = input.defaults;
+  const hh = await database.households.toCollection().first();
+  return { input, result: buildNestedPlan(input, { days: { short: d.shortDays, medium: d.mediumDays, long: d.longDays }, include: hh?.planOverrides }) };
 }
 
 export interface SavedPlan { snapshot: PlanSnapshot; scenario: PlanningScenario; result: PlanResult }

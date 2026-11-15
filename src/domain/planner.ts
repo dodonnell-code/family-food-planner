@@ -12,7 +12,7 @@ import { checkFood } from './safety';
 import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-3';
+export const ENGINE_VERSION = 'engine-4';
 export const NEEDS_COOKING = 'Needs heat or cooking';
 /** Default cap on canned food in long-term plans with cooking (% of calories). */
 export const LONG_TERM_CANNED_MAX_PERCENT = 20;
@@ -57,6 +57,9 @@ export interface PlanInput {
   foods: FoodItem[];
   /** Admin override: always include these foods, even if the planner would leave them out. */
   include?: ID[];
+  /** The next-smaller plan. Plans are nested: everything in it counts toward this one, and
+   *  this plan only adds what's still needed on top. */
+  base?: PlanResult;
 }
 
 export interface PlanOverride {
@@ -97,6 +100,8 @@ export interface PlannedItem {
   confidence: 'high' | 'medium' | 'low';
   counts: { eligible: number; liked: number; neutral: number; disliked: number; unknown: number };
   verdicts: MemberVerdict[];
+  /** How much of this item comes from the smaller plan this one builds on. */
+  fromBase?: { tier: Tier; days: number; packages: number };
   volumeL?: number;
   cost?: number;
   shelfLife: string;
@@ -154,6 +159,8 @@ export interface PlanResult {
   coverage: MemberCoverage[];
   /** Foods the admin added by hand (missing on plans saved before this existed). */
   overrides?: PlanOverride[];
+  /** The smaller plan this one builds on (its food is included here). */
+  base?: { tier: Tier; days: number; calories: number };
   water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number };
   fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
   equipment: EquipmentNeed[];
@@ -283,6 +290,22 @@ export function scoreFood(food: FoodItem, members: PlanMember[], tier: Tier, day
   return { score, factors, verdicts, confidence, counts, mean: known.length ? mean : undefined };
 }
 
+export const TIER_ORDER: Tier[] = ['short', 'medium', 'long'];
+
+/**
+ * Plans are nested: the short-term supply is part of the medium-term one, and both are part
+ * of the long-term one. Builds each smaller plan first and adds on top of it.
+ */
+export function buildNestedPlan(input: PlanInput, chain: { days: Record<Tier, number>; include?: Partial<Record<Tier, ID[]>> }): PlanResult {
+  let base: PlanResult | undefined;
+  for (const t of TIER_ORDER.slice(0, TIER_ORDER.indexOf(input.tier))) {
+    // The smaller supplies keep their usual scenario, except that a no-cook plan is no-cook all the way down.
+    const scenario: Scenario = input.scenario === 'no-cook' || t === 'short' ? 'no-cook' : 'limited-cook';
+    base = buildPlan({ ...input, tier: t, scenario, days: chain.days[t], include: chain.include?.[t] ?? [], base });
+  }
+  return buildPlan({ ...input, base });
+}
+
 export function buildPlan(input: PlanInput): PlanResult {
   const { tier, scenario, days, defaults, members } = input;
   const warnings: string[] = [];
@@ -290,6 +313,10 @@ export function buildPlan(input: PlanInput): PlanResult {
   const nameOf = (id: ID) => members.find((m) => m.id === id)?.name ?? 'Someone';
   const forced = new Set(input.include ?? []);
   const overrides: PlanOverride[] = [];
+  // Food from the smaller plan this one builds on is already counted, so it always stays.
+  const carried = new Map((input.base?.items ?? []).map((i) => [i.foodId, i]));
+  const carriedUnsafe = new Map<ID, ExcludedFood['reasons']>();
+  const baseInfo = input.base ? { tier: input.base.tier, days: input.base.days } : undefined;
 
   if (!members.length) warnings.push('No active members, so there is nothing to plan yet.');
   const noSurvey = members.filter((m) => !m.surveyId);
@@ -308,6 +335,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       })
       .filter((x) => x.reasons.length);
     if (forced.has(f.id)) { overrides.push({ foodId: f.id, name: f.name, unsafeFor: reasons }); eligible.push(f); continue; }
+    if (carried.has(f.id)) { if (reasons.length) carriedUnsafe.set(f.id, reasons); eligible.push(f); continue; }
     if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
     if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: NEEDS_COOKING }); continue; }
     eligible.push(f);
@@ -350,7 +378,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   // ---- 3. Score and choose a varied set ----
   const scored = eligible
     // Cooking oil and similar ingredients aren't meals; rapid-carb treatments are reserved above.
-    .filter((f) => forced.has(f.id) || (!isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple')))
+    .filter((f) => forced.has(f.id) || carried.has(f.id) || (!isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple')))
     .map((f) => ({ f, ...scoreFood(f, members, tier, days) }));
 
   const dailyCaloriesTotal = members.reduce((s, m) => s + (m.dailyCalories ?? defaults.defaultDailyCalories), 0);
@@ -362,6 +390,8 @@ export function buildPlan(input: PlanInput): PlanResult {
   // (which mostly need hot water) can't fill in, so canned isn't limited there.
   const cannedPct = tier === 'long' && scenario === 'limited-cook' ? (defaults.longTermCannedMaxPercent ?? LONG_TERM_CANNED_MAX_PERCENT) : 100;
   const cannedBudget = { left: cannedPct >= 100 ? Infinity : (targetCalories * cannedPct) / 100 };
+  // Canned food carried over from the smaller plans uses up the canned budget first.
+  for (const i of carried.values()) if (foods.find((f) => f.id === i.foodId)?.form === 'canned') cannedBudget.left -= i.calories;
   // Fill side groups first; whatever any group can't place goes to grains & staples (last).
   const ORDER: Bucket[] = ['produce', 'snacks', 'drinks', 'mains', 'starches'];
   let carry = 0;
@@ -400,17 +430,20 @@ export function buildPlan(input: PlanInput): PlanResult {
       if (k) kinds.add(k);
     }
     while (chosen.length < PICKS[tier][b] && takeNext());
+    // Food from the smaller plan is part of this one at its amount. It only grows if this
+    // plan picks it again; the rest of the calories go to this plan's own picks.
+    const carriedHere = pool.filter((y) => carried.has(y.f.id));
 
     // Calories other groups couldn't place go to grains & staples, the natural calorie base.
     let share = targetCalories * BUCKET_SHARE[b] + (b === 'starches' ? carry : 0);
     if (b === 'starches') carry = 0;
-    if (!chosen.length) { carry += share; if (members.length) warnings.push(`Nothing suitable for “${BUCKET_LABEL[b]}” in this plan; those calories were moved to other groups.`); continue; }
+    if (!chosen.length && !carriedHere.length) { carry += share; if (members.length) warnings.push(`Nothing suitable for “${BUCKET_LABEL[b]}” in this plan; those calories were moved to other groups.`); continue; }
 
     // Spread the bucket's calories by score, with caps so the plan stays realistic:
     //  - no food above a set number of servings per person per day, or above a share of its group;
     //  - fruit/veg, snacks and drinks are limited by servings (they're there for variety and
     //    nutrients, not to fill calories), and what they can't place moves to mains/staples.
-    const bucketCalories = share;
+    const bucketCalories = Math.max(0, share);
     const servingCap = (x: (typeof pool)[number]) => Math.max(1, people * days * SERVING_CAP[x.f.category]);
     const bucketServingsLeft = { n: Number.isFinite(BUCKET_SERVINGS[b]) ? Math.max(1, people * days * BUCKET_SERVINGS[b]) : Infinity };
     let relaxed = false;
@@ -419,6 +452,13 @@ export function buildPlan(input: PlanInput): PlanResult {
       const cap = relaxed ? servingCap(x) : Math.min(servingCap(x), Math.max(1, (MAX_ITEM_SHARE[tier] * bucketCalories) / x.f.nutrition.caloriesPerServing));
       return x.f.form === 'canned' && !forced.has(x.f.id) ? Math.min(cap, (alloc.get(x) ?? 0) + cannedBudget.left / x.f.nutrition.caloriesPerServing) : cap;
     };
+    // Start from what the smaller plan already has; only the rest of the group's calories is added.
+    for (const x of carriedHere) {
+      const bi = carried.get(x.f.id)!;
+      alloc.set(x, bi.servings);
+      share -= bi.servings * x.f.nutrition.caloriesPerServing;
+      bucketServingsLeft.n -= bi.servings;
+    }
     for (let guard = 0; guard < 80 && share > 1 && bucketServingsLeft.n > 0.01; guard++) {
       let open = chosen.filter((x) => (alloc.get(x) ?? 0) < capFor(x) - 1e-9);
       if (!open.length) {
@@ -439,15 +479,17 @@ export function buildPlan(input: PlanInput): PlanResult {
       share -= placed;
       if (placed < 1) break;
     }
-    if (share > 1) carry += share;
+    // Unplaced calories move on to staples; more than enough already (from the smaller plan) means fewer staples.
+    if (Math.abs(share) > 1) carry += share;
 
-    for (const x of chosen) {
+    for (const x of [...chosen, ...carriedHere.filter((y) => !chosen.includes(y))]) {
       const f = x.f;
       const raw = alloc.get(x) ?? 0;
       if (raw <= 0 && !forced.has(f.id)) continue;
       // Admin additions get at least one package, even when calories are already covered.
-      const servings = Math.max(forced.has(f.id) && raw <= 0 ? f.package.servingsPerPackage : 1, Math.ceil(raw - 1e-9));
-      const packages = Math.ceil(servings / f.package.servingsPerPackage);
+      const bi = carried.get(f.id);
+      const servings = Math.max(forced.has(f.id) && raw <= 0 ? f.package.servingsPerPackage : 1, bi?.servings ?? 0, Math.ceil(raw - 1e-9));
+      const packages = Math.max(bi?.packages ?? 0, Math.ceil(servings / f.package.servingsPerPackage));
       const why: string[] = [];
       const rated = x.verdicts.filter((v) => typeof v.rating === 'number' && v.status === 'ok');
       if (x.counts.liked) why.push(`Liked by ${x.counts.liked} of ${members.length}`);
@@ -463,6 +505,10 @@ export function buildPlan(input: PlanInput): PlanResult {
         if (v.status === 'prep') flags.push(`${nameOf(v.memberId)}: ${v.notes[v.notes.length - 1]}`);
         for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
       }
+      if (bi && baseInfo) {
+        why.unshift(`Includes the ${baseInfo.days}-day supply’s ${bi.packages}`);
+        if (!forced.has(f.id)) for (const r of carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override in the ${baseInfo.days}-day plan: store it apart and labeled.`);
+      }
       if (forced.has(f.id)) {
         why.unshift('Added by admin');
         const o = overrides.find((y) => y.foodId === f.id);
@@ -476,7 +522,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         calories: Math.round(servings * f.nutrition.caloriesPerServing),
         packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,
         prepWaterGallons: round1((servings * f.prep.waterCupsPerServing) / 16),
-        needsFuel: f.prep.needsFuel, carbsG: f.nutrition.carbsG, why, flags, confidence: x.confidence, counts: x.counts,
+        needsFuel: f.prep.needsFuel, carbsG: f.nutrition.carbsG, why, flags, fromBase: bi && baseInfo ? { ...baseInfo, packages: bi.packages } : undefined, confidence: x.confidence, counts: x.counts,
         verdicts: x.verdicts.map(({ value: _v, ...v }) => v),
         volumeL: f.package.volumeL !== undefined ? round1(packages * f.package.volumeL) : undefined,
         cost: f.priceEstimate !== undefined ? Math.round(packages * f.priceEstimate * 100) / 100 : undefined,
@@ -555,6 +601,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   return {
     engineVersion: ENGINE_VERSION, tier, scenario, days, people, dailyCaloriesTotal, targetCalories, plannedCalories,
     items, reserved, excluded, coverage, overrides,
+    base: input.base && baseInfo ? { ...baseInfo, calories: input.base.plannedCalories } : undefined,
     water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons },
     fuel: { burnerMinutes, items: fuelItems },
     equipment,

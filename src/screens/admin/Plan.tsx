@@ -73,6 +73,11 @@ export default function Plan() {
       ) : (
         <>
           <Summary r={plan.result} />
+          <p className="small muted" style={{ margin: 0 }}>
+            {plan.result.base
+              ? `Builds on the ${plan.result.base.days}-day supply: everything in it is part of this plan (marked “Includes the ${plan.result.base.days}-day supply’s…”), and this plan adds what’s still needed for ${plan.result.days} days.`
+              : `This is the first supply. The ${days('medium') ?? 14}-day plan builds on it, and the ${days('long') ?? 90}-day plan builds on both.`}
+          </p>
           {plan.result.warnings.length > 0 && (
             <div className="notice stack" style={{ gap: 6 }} role="status">
               <strong>Check these</strong>

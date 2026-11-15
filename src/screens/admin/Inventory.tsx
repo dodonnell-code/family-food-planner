@@ -10,7 +10,7 @@ import { EXPIRING_SOON_DAYS, inventoryStatus, stockStatus, type NeedRow } from '
 
 /** Days of warning before best-by (from Settings). */
 const WarnDays = createContext(EXPIRING_SOON_DAYS);
-import type { Scenario, StockEntry, Tier } from '../../domain/types';
+import type { FoodItem, Scenario, StockEntry, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
 const SCENARIOS: Scenario[] = ['no-cook', 'limited-cook'];
@@ -56,6 +56,7 @@ export default function Inventory() {
         <div className="notice">Add your family on <Link to="/admin/members">Members</Link> first; the plan sets what you need.</div>
       ) : (
         <>
+          <Stages stock={stock!} foods={foods!} warnDays={warnDays} dek={dek} />
           <div className="stats">
             <div className="card stat"><span className="small muted">Calories on hand</span><strong>{Math.round((status.totals.coveredCalories / Math.max(1, status.totals.plannedCalories)) * 100)}%</strong><span className="small muted">of the {plan.result.days}-day plan</span></div>
             <div className="card stat"><span className="small muted">Packages</span><strong>{status.totals.havePackages} / {status.totals.needPackages}</strong><span className="small muted">on hand / needed</span></div>
@@ -209,6 +210,30 @@ function Water({ need, entries }: { need: number; entries: StockEntry[] }) {
       <p className="small muted" style={{ margin: 0 }}>This plan needs about {num(need)} gallons (drinking plus preparing food). Store-bought water: use the date on the label. Water you bottle yourself: replace about every 6 months.</p>
       {adding && <AddForm unit="gallons" defaultQty={Math.max(1, Math.ceil(need))} dateLabel="Replace by (optional)" onAdd={async (q, bestBy) => { await addStock({ kind: 'water', quantity: q, bestBy }); setAdding(false); }} />}
       {entries.length > 0 && <Entries entries={entries} unit="gal" />}
+    </section>
+  );
+}
+
+/** Progress toward each supply. They're nested, so food on hand counts toward all three. */
+function Stages({ stock, foods, warnDays, dek }: { stock: StockEntry[]; foods: FoodItem[]; warnDays: number; dek: CryptoKey | null }) {
+  const plans = useLiveQuery(() => Promise.all(TIERS.map((t) => computePlan(t, defaultScenario(t), dek))), [dek]);
+  if (!plans) return null;
+  return (
+    <section className="card stack" aria-label="Progress by supply">
+      <h2 style={{ margin: 0 }}>Progress</h2>
+      <p className="small muted" style={{ margin: 0 }}>The supplies build on each other: the {plans[0].result.days}-day supply is part of the {plans[1].result.days}-day one, and both are part of the {plans[2].result.days}-day one. Everything on hand counts toward all three, so fill them in order.</p>
+      {plans.map(({ result }, i) => {
+        const st = inventoryStatus(result, stock, foods, today(), warnDays);
+        const pct = Math.min(100, Math.round((st.totals.coveredCalories / Math.max(1, st.totals.plannedCalories)) * 100));
+        return (
+          <div key={TIERS[i]} className="stack" style={{ gap: 4 }}>
+            <div className="spread small"><strong>{TIER_LABEL[TIERS[i]]} · {result.days} days</strong><span className="muted">{pct}% of calories on hand · {st.totals.toBuyPackages} packages to go</span></div>
+            <div style={{ height: 10, borderRadius: 5, background: 'var(--surface-2)', overflow: 'hidden' }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${TIER_LABEL[TIERS[i]]} progress`}>
+              <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)' }} />
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSeedCatalog } from '../data/seedCatalog';
 import { DEFAULT_PLANNING } from '../data/repo';
-import { buildPlan, diffPlans, scoreFood, type PlanInput, type PlanMember } from './planner';
+import { buildNestedPlan, buildPlan, diffPlans, scoreFood, type PlanInput, type PlanMember } from './planner';
 import type { MemberRestriction, RatingCode, Tier } from './types';
 
 const foods = buildSeedCatalog();
@@ -224,5 +224,43 @@ describe('planner: admin additions', () => {
   it('can add cooking oil, which the planner never picks on its own', () => {
     const plan = buildPlan(input([member('a')], 'long', { include: ['cooking-oil'] }));
     expect(plan.items.some((i) => i.foodId === 'cooking-oil')).toBe(true);
+  });
+});
+
+describe('planner: nested supplies', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+  const chain = { days: { short: 3, medium: 14, long: 90 } };
+  const nested = (tier: Tier) => buildNestedPlan(input(fam(), tier), chain);
+
+  it('the short-term supply is part of the medium-term one, and both are part of the long-term one', () => {
+    const [s, m, l] = [nested('short'), nested('medium'), nested('long')];
+    for (const [small, big] of [[s, m], [m, l]] as const) {
+      for (const i of small.items) {
+        const j = big.items.find((x) => x.foodId === i.foodId);
+        expect(j, `${i.name} carried into ${big.tier}`).toBeDefined();
+        expect(j!.packages).toBeGreaterThanOrEqual(i.packages);
+      }
+    }
+    expect(m.base).toMatchObject({ tier: 'short', days: 3 });
+    expect(l.base).toMatchObject({ tier: 'medium', days: 14 });
+    expect(m.items.find((x) => x.foodId === s.items[0].foodId)!.why[0]).toMatch(/^Includes the 3-day supply/);
+  });
+
+  it('adds only what is still needed (calories are not counted twice)', () => {
+    for (const tier of ['medium', 'long'] as Tier[]) {
+      const p = nested(tier);
+      expect(p.plannedCalories).toBeGreaterThanOrEqual(p.targetCalories * 0.95);
+      expect(p.plannedCalories).toBeLessThan(p.targetCalories * 1.2);
+    }
+  });
+
+  it('long-term still keeps canned food down, counting the canned food carried in', () => {
+    const l = nested('long');
+    const canned = l.items.filter((i) => food(i.foodId).form === 'canned').reduce((t, i) => t + i.calories, 0);
+    const carried = l.items.filter((i) => food(i.foodId).form === 'canned' && i.fromBase).length;
+    const newCanned = l.items.filter((i) => food(i.foodId).form === 'canned' && !i.fromBase).length;
+    expect(carried).toBeGreaterThan(0);
+    expect(newCanned).toBeLessThanOrEqual(1);
+    expect(canned / l.plannedCalories).toBeLessThan(0.3);
   });
 });
