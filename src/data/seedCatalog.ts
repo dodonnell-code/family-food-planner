@@ -7,12 +7,13 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v10: ramen, chocolate hazelnut spread, butter powder, chocolate chips, cocoa powder, cake mix, frosting.
 // v9: full nutrition facts (fat, saturated fat, fiber, sugar, sodium) with their source.
 // v8: baking supplies & seasonings (new 'pantry' group, incl. salt; cooking oil moves there).
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 9;
+export const CATALOG_VERSION = 10;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice'];
@@ -28,7 +29,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, ramen: 52, nutella: 22, 'butter-powder': 3, 'chocolate-chips': 9, 'cocoa-powder': 3, 'cake-mix': 35, frosting: 21, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, sunbutter: 7, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -181,6 +182,14 @@ const S: Seed[] = [
   { id: 'electrolyte-mix', name: 'Electrolyte drink mix', category: 'beverage', form: 'packet', tags: ['vegan'], prep: 'add-cold-water', water: 2, sl: { ...SRC.shortDry, min: 18, max: 36 }, serving: '1 packet', kcal: 40, pkg: '16-count', servings: 16, volL: 0.2, cost: 2, role: 'drink' },
   { id: 'coffee-tea', name: 'Instant coffee / tea', category: 'beverage', form: 'jar', tags: ['vegan', 'comfort'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 1, sl: { ...SRC.shortDry, min: 18, max: 36 }, serving: '1 cup', kcal: 0, pkg: '8 oz jar', servings: 120, volL: 0.4, cost: 2, role: 'drink' },
   { id: 'cocoa-mix', name: 'Hot cocoa mix', category: 'beverage', form: 'packet', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['milk'], mayContain: ['soy'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 0.75, sl: SRC.shortDry, serving: '1 packet', kcal: 120, pkg: '10-pack', servings: 10, volL: 0.4, cost: 1, rot: 2, role: 'drink' },
+  // ---- Added on request (v10) ----
+  { id: 'ramen', name: 'Instant ramen noodles', category: 'grain', form: 'packet', examples: 'Any brand of packaged instant ramen', tags: ['kid-friendly', 'comfort'], contains: ['wheat', 'gluten', 'soy'], mayContain: ['milk', 'egg', 'fish', 'shellfish', 'sesame'], prep: 'add-hot-water', cookMin: 3, batch: 4, water: 2, sl: { min: 8, max: 12, source: 'Package label (typical)', storage: 'Cool, dry', assumptions: 'Fried noodles; the oil slowly goes stale' }, serving: '1 packet (3 oz)', kcal: 380, protein: 9, pkg: '24-pack', servings: 24, volL: 6, cost: 1, rot: 3, role: 'main', notes: 'Very salty (about 1,600 mg sodium per packet with the flavor packet); use half the packet to cut it. Add freeze-dried vegetables, egg or meat to make a meal. Flavor packets vary: shrimp/seafood flavors contain shellfish.' },
+  { id: 'nutella', name: 'Chocolate hazelnut spread (Nutella-style)', category: 'fat-snack', form: 'jar', examples: 'Nutella or store brand', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['tree-nut', 'milk', 'soy'], prep: 'ready-to-eat', sl: { min: 12, max: 12, source: 'Package label (typical)', storage: 'Cool, dry; no need to refrigerate', assumptions: 'Unopened; oils separate and go stale over time' }, serving: '2 tbsp', kcal: 200, protein: 2, pkg: '26.5 oz jar', servings: 20, volL: 0.8, cost: 2, rot: 2, role: 'snack', notes: 'Contains hazelnuts (tree nut) and milk. Great on tortillas, crackers and pancakes for morale.' },
+  { id: 'butter-powder', name: 'Butter powder (shelf-stable butter)', category: 'pantry', form: 'freeze-dried', examples: 'Butter powder in #10 cans; or ghee / canned butter', tags: ['vegetarian'], contains: ['milk'], prep: 'ready-to-eat', sl: { min: 36, max: 120, source: 'Manufacturer claims (typical)', storage: 'Cool, dry; sealed', assumptions: 'Unopened #10 can; about 1 year once opened' }, serving: '1 tbsp powder', kcal: 60, protein: 1, pkg: '#10 can (about 2 lb)', servings: 100, volL: 3.5, cost: 3, rot: 1, role: 'staple', use: 0.3, from: 'medium', notes: 'Mix with a little water for a spread, or add dry to baking, mashed potatoes and pasta. Alternatives: ghee (clarified butter in a jar, keeps about 1–2 years unopened) or canned butter.' },
+  { id: 'chocolate-chips', name: 'Chocolate chips', category: 'pantry', form: 'pouch', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['milk', 'soy'], mayContain: ['peanut', 'tree-nut', 'wheat'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark, below about 75°F; airtight', assumptions: 'May turn white (“bloom”) in heat; still safe to eat' }, serving: '1 tbsp', kcal: 70, protein: 1, pkg: '12 oz bag', servings: 22, volL: 0.5, cost: 2, rot: 2, role: 'staple', use: 0.1, from: 'medium', notes: 'For baking, pancakes, oatmeal and trail mix. Dark chocolate (no milk) is an option if anyone avoids dairy.' },
+  { id: 'cocoa-powder', name: 'Cocoa powder (unsweetened)', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], mayContain: ['milk'], prep: 'ready-to-eat', sl: { min: 24, max: 36, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Loses flavor slowly; stays safe' }, serving: '1 tbsp', kcal: 10, protein: 1, pkg: '8 oz canister', servings: 45, volL: 0.4, cost: 2, rot: 1, role: 'staple', use: 0.05, from: 'long', notes: 'For baking, frosting and hot chocolate (with powdered milk and sugar).' },
+  { id: 'cake-mix', name: 'Cake mix', category: 'pantry', form: 'box', examples: 'Any boxed cake or brownie mix', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['wheat', 'gluten'], mayContain: ['milk', 'egg', 'soy'], prep: 'heat', cookMin: 35, sl: { min: 9, max: 18, source: 'Package label (typical)', storage: 'Cool, dry; keep bugs out', assumptions: 'Best-by date; leavening weakens after it' }, serving: '1/10 box (1 slice)', kcal: 170, protein: 2, pkg: '15.25 oz box', servings: 10, volL: 0.9, cost: 1, rot: 3, role: 'staple', use: 0.15, from: 'medium', notes: 'Usually needs eggs and oil: use powdered egg and cooking oil from the plan, or buy “just add water” mixes. Bake in a Dutch oven or camp oven, or make skillet/mug cakes. Planned at about one cake every two weeks for a family of five.', equip: ['Dutch oven or camp oven', 'Mixing bowl'] },
+  { id: 'frosting', name: 'Frosting (ready-to-spread tub)', category: 'pantry', form: 'jar', examples: 'Any ready-to-spread frosting', tags: ['vegetarian', 'kid-friendly', 'comfort'], mayContain: ['milk', 'soy', 'egg'], prep: 'ready-to-eat', sl: { min: 12, max: 18, source: 'Package label (typical)', storage: 'Cool; refrigerate once opened if you can', assumptions: 'Unopened tub' }, serving: '2 tbsp', kcal: 140, protein: 0, pkg: '16 oz tub', servings: 12, volL: 0.5, cost: 1, rot: 3, role: 'staple', use: 0.15, from: 'medium', notes: 'About one tub per cake. Can also be made from powdered sugar, butter powder and cocoa.' },
   // ---- Baking supplies & seasonings (sized by use, not calories) ----
   { id: 'salt', name: 'Salt (iodized)', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tsp', kcal: 0, pkg: '26 oz canister', servings: 120, volL: 0.8, cost: 1, rot: 1, role: 'staple', use: 0.75, from: 'short', notes: 'For cooking, baking and preserving. Keeps indefinitely if kept dry.' },
   { id: 'black-pepper', name: 'Black pepper', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/4 tsp', kcal: 0, pkg: '4 oz tin', servings: 180, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.25, from: 'short' },
@@ -209,6 +218,13 @@ const S: Seed[] = [
  * food, from USDA FoodData Central and common labels. Brands differ: check your label.
  */
 const NUTRITION: Record<string, number[]> = {
+  ramen: [14, 7, 2, 1, 1600],
+  nutella: [11, 4, 1, 21, 15],
+  'butter-powder': [5, 3, 0, 0, 40],
+  'chocolate-chips': [4, 2.5, 1, 8, 0],
+  'cocoa-powder': [0.5, 0.3, 2, 0, 0],
+  'cake-mix': [3, 1.5, 0, 19, 300],
+  frosting: [6, 2, 0, 20, 70],
   'chicken-canned': [2, 0.5, 0, 0, 200],
   'tuna-canned': [0.5, 0, 0, 0, 180],
   'tuna-pouch': [1, 0, 0, 0, 300],
@@ -306,7 +322,7 @@ const NUTRITION: Record<string, number[]> = {
   'vanilla': [0, 0, 0, 0.5, 0, 0],
 };
 /** Foods whose values vary a lot between brands or flavors (assorted meals, bars, cereals). */
-const ROUGH_NUTRITION = new Set(['cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
+const ROUGH_NUTRITION = new Set(['ramen', 'cake-mix', 'butter-powder', 'cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
 const NUTRITION_SOURCE = 'Typical values for this kind of food (USDA FoodData Central and common labels). Brands differ; check your label.';
 const ROUGH_SOURCE = 'Rough average across brands and flavors; varies a lot. Enter your product’s label values for accuracy.';
 
