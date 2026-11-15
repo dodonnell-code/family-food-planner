@@ -126,7 +126,8 @@ describe('planner: quantities, water and needs', () => {
     };
     expect(share('long', 90)).toBeGreaterThan(0.5);
     expect(share('long', 365)).toBeGreaterThan(0.5);
-    expect(share('medium', 14)).toBeLessThan(0.25);
+    // Medium is mostly ready-to-eat, with rice and potatoes as staples.
+    expect(share('medium', 14)).toBeLessThan(0.4);
   });
 
   it('caps fruit/veg servings so low-calorie foods don’t balloon', () => {
@@ -292,5 +293,33 @@ describe('planner: admin swaps', () => {
     expect(fd).toBeDefined();
     expect(fd.allergens).toEqual({ contains: ['wheat', 'milk', 'soy'], mayContain: ['egg'] });
     expect(fd.safetyNotes).toMatch(/Check every can/);
+  });
+});
+
+describe('planner: preparedness staples', () => {
+  const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
+  it('14- and 90-day plans with cooking include rice, beans and instant mashed potatoes', () => {
+    for (const tier of ['medium', 'long'] as Tier[]) {
+      const p = buildPlan(input(fam(), tier));
+      const ids = p.items.map((i) => i.foodId);
+      expect(ids, tier).toContain('white-rice');
+      expect(ids, tier).toContain('potato-flakes');
+      expect(ids.some((id) => ['black-beans-canned', 'kidney-beans-canned', 'pinto-beans-dry', 'refried-beans-canned'].includes(id)), tier).toBe(true);
+      expect(p.items.find((i) => i.foodId === 'white-rice')!.why[0]).toBe('Preparedness staple');
+    }
+  });
+
+  it('skips a staple that is unsafe for someone, that the family won’t eat, or that the admin swapped out', () => {
+    const noRice = buildPlan(input([member('a', { ratings: { 'white-rice': 1 } }), member('b', { ratings: { 'white-rice': 1 } })], 'medium'));
+    expect(noRice.items.find((i) => i.foodId === 'white-rice')?.why[0]).not.toBe('Preparedness staple');
+    const allergic = buildPlan(input([member('a', { restrictions: [restr('a', 'milk')] })], 'medium'));
+    expect(allergic.items.some((i) => i.foodId === 'potato-flakes')).toBe(false);
+    const swapped = buildPlan(input(fam(), 'medium', { substitutions: { 'potato-flakes': '' } }));
+    expect(swapped.items.some((i) => i.foodId === 'potato-flakes')).toBe(false);
+  });
+
+  it('no-cook plans don’t force staples that need cooking', () => {
+    const p = buildPlan(input(fam(), 'medium', { scenario: 'no-cook' }));
+    expect(p.items.some((i) => i.foodId === 'white-rice' || i.foodId === 'potato-flakes')).toBe(false);
   });
 });

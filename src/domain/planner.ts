@@ -191,6 +191,25 @@ export const BUCKET_LABEL: Record<Bucket, string> = {
   mains: 'Main dishes & proteins', starches: 'Grains & starches', produce: 'Fruit & vegetables', snacks: 'Snacks & spreads', drinks: 'Drinks & milk',
 };
 /** How many different foods to choose per bucket, by tier (more variety for longer horizons). */
+/**
+ * Core preparedness staples every plan with cooking should have, unless they're unsafe for
+ * someone, the family doesn't want them, or an admin swaps them out. Each group lists foods in
+ * order of preference; the first suitable one is used.
+ */
+export const STAPLES: Record<Tier, { label: string; options: ID[] }[]> = {
+  short: [],
+  medium: [
+    { label: 'rice', options: ['white-rice', 'rice-pouch-rte'] },
+    { label: 'beans', options: ['black-beans-canned', 'kidney-beans-canned', 'pinto-beans-dry', 'refried-beans-canned'] },
+    { label: 'potatoes', options: ['potato-flakes'] },
+  ],
+  long: [
+    { label: 'rice', options: ['white-rice'] },
+    { label: 'beans', options: ['pinto-beans-dry', 'black-beans-canned', 'kidney-beans-canned'] },
+    { label: 'potatoes', options: ['potato-flakes'] },
+  ],
+};
+
 const PICKS: Record<Tier, Record<Bucket, number>> = {
   short: { mains: 3, starches: 2, produce: 2, snacks: 2, drinks: 1 },
   medium: { mains: 5, starches: 3, produce: 4, snacks: 3, drinks: 2 },
@@ -326,6 +345,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const forced = new Set([...(input.include ?? []), ...replacing.keys()].filter((id) => !(id in subs)));
   const overrides: PlanOverride[] = [];
   const foodName = (id: ID) => input.foods.find((f) => f.id === id)?.name ?? 'a food';
+  const staples = new Set<ID>();
   // Food from the smaller plan this one builds on is already counted, so it always stays.
   const carried = new Map((input.base?.items ?? []).map((i) => [i.foodId, i]));
   const carriedUnsafe = new Map<ID, ExcludedFood['reasons']>();
@@ -440,8 +460,18 @@ export function buildPlan(input: PlanInput): PlanResult {
       chosen.push(x);
       return true;
     };
+    // Core staples next (rice, beans, potatoes) when cooking is possible and the family is OK with them.
+    if (scenario === 'limited-cook') {
+      for (const g of STAPLES[tier]) {
+        const x = g.options.map((id) => pool.find((y) => y.f.id === id)).find((y) => y && y.factors.acceptance >= 0.3);
+        if (!x || chosen.includes(x)) continue;
+        chosen.push(x);
+        staples.add(x.f.id);
+        forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
+      }
+    }
     // Admin additions go in first, whatever their score.
-    for (const x of pool.filter((y) => forced.has(y.f.id))) {
+    for (const x of pool.filter((y) => forced.has(y.f.id) && !chosen.includes(y))) {
       chosen.push(x);
       forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
       const k = proteinKind(x.f);
@@ -523,6 +553,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         if (v.status === 'prep') flags.push(`${nameOf(v.memberId)}: ${v.notes[v.notes.length - 1]}`);
         for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
       }
+      if (staples.has(f.id) && !forced.has(f.id)) why.unshift('Preparedness staple');
       if (bi && baseInfo) {
         why.unshift(`Includes the ${baseInfo.days}-day supply’s ${bi.packages}`);
         if (!forced.has(f.id)) for (const r of carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override in the ${baseInfo.days}-day plan: store it apart and labeled.`);

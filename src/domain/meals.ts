@@ -168,6 +168,18 @@ export const MEAL_RECIPES: MealRecipe[] = [
     freshAddIns: ['Smoked sausage', 'Onion, celery, bell pepper', 'Hot sauce'],
   },
   {
+    id: 'potatoes-chicken', name: 'Chicken, gravy and mashed potatoes', meal: 'Dinner', heat: true,
+    slots: [
+      { label: 'Mashed potatoes', options: [['potato-flakes', 2.5]] },
+      { label: 'Chicken or meat', options: MEAT.filter(([id]) => !id.startsWith('tuna') && id !== 'salmon-canned') },
+      { label: 'Vegetables', options: VEG, optional: true },
+      { label: 'Milk', options: MILK, optional: true },
+      { label: 'Oil', options: OIL, optional: true },
+    ],
+    steps: ['Boil water and stir in the potato flakes (about ½ cup water per ½ cup of potatoes). Stir in milk powder and a little oil for richer potatoes.', 'Rehydrate freeze-dried meat and vegetables in hot water for 5–10 minutes, then drain (save the water).', 'Gravy: warm the meat in a pan with the saved water, a spoon of flour and bouillon if you have it, stirring until thick. Spoon over the potatoes with the vegetables on the side.'],
+    freshAddIns: ['Butter and fresh milk for the potatoes', 'Fresh chicken or ground beef', 'Gravy mix, onion'],
+  },
+  {
     id: 'freeze-dried-dinner', name: 'Freeze-dried meal and fruit', meal: 'Dinner', heat: true,
     slots: [
       { label: 'Freeze-dried meal', options: [['fd-entree', 1.5], ['fd-meal', 1.5], ['fd-breakfast', 1.5]] },

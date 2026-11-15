@@ -8,7 +8,7 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod } from '../
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
-//     plus assorted single pouches for the short and medium supplies.
+//     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
 export const CATALOG_VERSION = 6;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
@@ -25,7 +25,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, sunbutter: 7, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -113,6 +113,7 @@ const S: Seed[] = [
   { id: 'cereal', name: 'Breakfast cereal', category: 'grain', form: 'box', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 cup', kcal: 130, protein: 3, pkg: '12 oz box', servings: 10, volL: 2.5, cost: 2, rot: 3, role: 'main', notes: 'Pairs with shelf-stable milk' },
   { id: 'tortillas-shelf', name: 'Shelf-stable tortillas', category: 'grain', form: 'pouch', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'ready-to-eat', sl: { ...SRC.shortDry, min: 3, max: 6 }, serving: '1 tortilla', kcal: 140, protein: 4, pkg: '10-count pack', servings: 10, volL: 0.8, cost: 1, rot: 3, role: 'side' },
   { id: 'rice-pouch-rte', name: 'Ready-to-eat rice pouch', category: 'grain', form: 'pouch', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1 cup', kcal: 220, protein: 4, pkg: '8.8 oz pouch', servings: 2, volL: 0.3, cost: 2, role: 'side', notes: 'Only if label says safe to eat without heating' },
+  { id: 'potato-flakes', name: 'Instant mashed potatoes (flakes)', category: 'grain', form: 'dry', tags: ['vegetarian', 'gluten-free', 'kid-friendly'], mayContain: ['milk'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 0.5, sl: { ...SRC.longDry, min: 60, max: 300 }, serving: '1/2 cup prepared', kcal: 80, protein: 2, pkg: '#10 can', servings: 45, volL: 3.5, cost: 1, rot: 1, role: 'staple', notes: 'Plain flakes are usually just potato; flavored ones often contain milk or butter. Stir in powdered milk and a little oil or butter for richer potatoes.' },
   { id: 'white-rice', name: 'White rice', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'simmer', cookMin: 20, batch: 8, water: 0.5, sl: SRC.longDry, serving: '1/4 cup dry', kcal: 160, protein: 3, pkg: '10 lb bag', servings: 100, volL: 6, cost: 1, role: 'staple' },
   { id: 'pasta-dry', name: 'Dry pasta', category: 'grain', form: 'dry', tags: ['vegan', 'vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], prep: 'boil', cookMin: 12, batch: 8, water: 2, sl: { ...SRC.longDry, min: 24, max: 360 }, serving: '2 oz dry', kcal: 200, protein: 7, pkg: '1 lb box', servings: 8, volL: 1, cost: 1, role: 'staple' , equip: ['Colander or slotted spoon'] },
   { id: 'oats-instant', name: 'Instant oats', category: 'grain', form: 'packet', tags: ['vegan', 'vegetarian', 'kid-friendly'], mayContain: ['wheat', 'gluten'], prep: 'add-hot-water', cookMin: 5, batch: 6, water: 0.75, sl: SRC.shortDry, serving: '1 packet', kcal: 160, protein: 4, pkg: '10-packet box', servings: 10, volL: 1, cost: 1, role: 'main', notes: 'Can be soaked in cold water if no heat' },
