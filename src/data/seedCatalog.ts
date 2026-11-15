@@ -9,6 +9,7 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v16: condiments & sauces group (ketchup always stocked); hot sauce moves there.
 // v15: tuna, salmon and sardines merged into canned fish (with kinds).
 // v14: canned chicken and luncheon meat merged into canned meats (with kinds).
 // v13: generic foods with kinds (canned fruit, vegetables, soups, chili, beans, tuna, bars); merged items retired.
@@ -20,12 +21,17 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 15;
+export const CATALOG_VERSION = 16;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice', 'sunbutter', 'fruit-cups', 'canned-peaches', 'canned-pineapple', 'raisins', 'green-beans-canned', 'corn-canned', 'carrots-canned', 'veg-pouch', 'fd-corn-peas', 'soup-rte', 'beef-stew-canned', 'chili-canned', 'veg-chili-canned', 'black-beans-canned', 'chickpeas-canned', 'kidney-beans-canned', 'lentils-canned', 'tuna-canned', 'tuna-pouch', 'granola-bars', 'protein-bars', 'pb-packets', 'chicken-canned', 'spam-canned', 'tuna', 'salmon-canned', 'sardines-canned'];
 
 /** Foods merged into a generic one (v13): survey ratings carry over, and ratings of 4+ become liked kinds. */
+/** Foods that joined the survey in a later catalog version (for surveys taken before then). */
+export const SURVEY_SINCE: Record<string, number> = {
+  ketchup: 16, mustard: 16, 'mayo-packets': 16, jelly: 16, syrup: 16, 'bbq-sauce': 16, 'salad-dressing': 16, salsa: 16, 'hot-sauce': 16, relish: 16,
+};
+
 export const MERGED_INTO: Record<string, { into: string; kinds: string[] }> = {
   tuna: { into: 'canned-fish', kinds: ['tuna-light'] },
   'salmon-canned': { into: 'canned-fish', kinds: ['salmon'] },
@@ -82,7 +88,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'canned-fish': 0, 'canned-meat': 1, 'canned-fruit': 18, 'canned-veg': 7, 'canned-soup': 18, 'canned-chili': 26, 'canned-beans': 20, tuna: 0, bars: 26, ramen: 52, nutella: 22, 'butter-powder': 3, 'chocolate-chips': 9, 'cocoa-powder': 3, 'cake-mix': 35, frosting: 21, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'canned-fish': 0, 'canned-meat': 1, 'canned-fruit': 18, 'canned-veg': 7, 'canned-soup': 18, 'canned-chili': 26, 'canned-beans': 20, tuna: 0, bars: 26, ramen: 52, nutella: 22, 'butter-powder': 3, 'chocolate-chips': 9, 'cocoa-powder': 3, 'cake-mix': 35, frosting: 21, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, ketchup: 5, mustard: 0.3, 'mayo-packets': 0, jelly: 13, syrup: 27, 'bbq-sauce': 14, 'salad-dressing': 2, salsa: 2, relish: 5, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, 'almond-butter': 6, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -239,7 +245,17 @@ const S: Seed[] = [
   { id: 'italian-seasoning', name: 'Italian seasoning', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '1 oz jar', servings: 40, volL: 0.15, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'For pasta, soups and flatbread.' },
   { id: 'cinnamon', name: 'Ground cinnamon', category: 'pantry', form: 'jar', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 48, source: 'Package label (typical)', storage: 'Cool, dry, dark; airtight', assumptions: 'Loses flavor over time but stays safe' }, serving: '1/2 tsp', kcal: 0, pkg: '2 oz jar', servings: 40, volL: 0.15, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'For oatmeal, pancakes and baking.' },
   { id: 'soy-sauce', name: 'Soy sauce', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], contains: ['soy', 'wheat'], prep: 'ready-to-eat', sl: { min: 24, max: 36, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '1 tbsp', kcal: 10, pkg: '15 oz bottle', servings: 30, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium', notes: 'Gluten-free tamari is an option if anyone avoids wheat.' },
-  { id: 'hot-sauce', name: 'Hot sauce', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 60, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 0, pkg: '5 oz bottle', servings: 30, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium' },
+  // ---- Condiments & sauces: sized by use per person per day (not calories). Ketchup is always stocked. ----
+  { id: 'ketchup', name: 'Ketchup', category: 'condiment', form: 'bottle', examples: 'Squeeze bottles or single-serve packets', tags: ['vegan', 'vegetarian', 'gluten-free', 'kid-friendly'], prep: 'ready-to-eat', sl: { min: 12, max: 18, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened; high-acid, so an opened bottle keeps for weeks without a fridge' }, serving: '1 tbsp', kcal: 20, pkg: '20 oz squeeze bottle', servings: 33, volL: 0.6, cost: 1, rot: 2, role: 'staple', use: 1, from: 'short', notes: 'Always stocked: a household must-have. Several medium bottles beat one huge one, since each opened bottle gets used up faster.' },
+  { id: 'mustard', name: 'Mustard', category: 'condiment', form: 'bottle', tags: ['vegetarian', 'gluten-free'], contains: ['mustard'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened; keeps well after opening too' }, serving: '1 tsp', kcal: 3, pkg: '14 oz squeeze bottle', servings: 80, volL: 0.45, cost: 1, rot: 2, role: 'staple', use: 0.25, from: 'short' },
+  { id: 'mayo-packets', name: 'Mayonnaise (single-serve packets)', category: 'condiment', form: 'packet', tags: ['vegetarian', 'gluten-free'], contains: ['egg'], prep: 'ready-to-eat', sl: { min: 6, max: 12, source: 'Package label (typical)', storage: 'Cool, dry; sealed', assumptions: 'Sealed packets' }, serving: '1 packet (12 g)', kcal: 80, pkg: 'box of 50 packets', servings: 50, volL: 0.8, cost: 2, rot: 3, role: 'staple', use: 0.25, from: 'short', notes: 'A jar needs a fridge once opened; packets don’t. Use each packet all at once.' },
+  { id: 'jelly', name: 'Jelly & jam', category: 'condiment', form: 'jar', examples: 'For PB&J, crackers and oatmeal', tags: ['vegan', 'vegetarian', 'gluten-free', 'kid-friendly'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened; high sugar keeps an opened jar for weeks' }, serving: '1 tbsp', kcal: 50, pkg: '18 oz jar', servings: 25, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.3, from: 'short', notes: 'Buy the flavors the family picked. Squeeze bottles stay cleaner than jars.' },
+  { id: 'syrup', name: 'Pancake syrup', category: 'condiment', form: 'bottle', tags: ['vegan', 'vegetarian', 'gluten-free', 'kid-friendly'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '2 tbsp', kcal: 100, pkg: '24 oz bottle', servings: 22, volL: 0.7, cost: 1, rot: 2, role: 'staple', use: 0.2, from: 'medium', notes: 'Regular pancake syrup keeps without a fridge after opening; pure maple syrup needs one.' },
+  { id: 'bbq-sauce', name: 'BBQ sauce', category: 'condiment', form: 'bottle', tags: ['gluten-free'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '2 tbsp', kcal: 60, pkg: '18 oz bottle', servings: 15, volL: 0.55, cost: 1, rot: 2, role: 'staple', use: 0.15, from: 'medium', notes: 'Some contain Worcestershire (anchovy), honey or wheat: check labels.' },
+  { id: 'salad-dressing', name: 'Salad dressing & ranch', category: 'condiment', form: 'bottle', examples: 'Shelf-stable bottles, or single-serve packets for creamy ones', tags: [], prep: 'ready-to-eat', sl: { min: 9, max: 12, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '2 tbsp', kcal: 120, protein: 0.5, pkg: '16 oz bottle', servings: 16, volL: 0.5, cost: 2, rot: 3, role: 'staple', use: 0.15, from: 'medium', notes: 'Creamy dressings (ranch, Caesar) need a fridge once opened: buy those as single-serve packets. Also a dip for crackers and canned veg.' },
+  { id: 'salsa', name: 'Salsa', category: 'condiment', form: 'jar', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'ready-to-eat', sl: { min: 12, max: 18, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened; use within about a week once opened without a fridge' }, serving: '2 tbsp', kcal: 10, protein: 0.5, pkg: '16 oz jar', servings: 15, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.2, from: 'medium', notes: 'Smaller jars waste less once opened.' },
+  { id: 'hot-sauce', name: 'Hot sauce', category: 'condiment', form: 'bottle', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'ready-to-eat', sl: { min: 24, max: 60, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened; keeps well after opening too' }, serving: '1 tsp', kcal: 0, pkg: '5 oz bottle', servings: 30, volL: 0.2, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'medium' },
+  { id: 'relish', name: 'Pickle relish', category: 'condiment', form: 'jar', tags: ['vegan', 'vegetarian', 'gluten-free'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dark; unopened', assumptions: 'Unopened' }, serving: '1 tbsp', kcal: 20, pkg: '10 oz jar', servings: 18, volL: 0.3, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'long' },
   { id: 'vinegar', name: 'Vinegar (white or cider)', category: 'pantry', form: 'bottle', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 60, max: 600, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Keeps indefinitely if kept dry and sealed' }, serving: '1 tbsp', kcal: 0, pkg: '32 oz bottle', servings: 64, volL: 1, cost: 1, rot: 1, role: 'staple', use: 0.05, from: 'medium', notes: 'For cooking and dressings; also useful for cleaning.' },
   { id: 'baking-powder', name: 'Baking powder', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 12, max: 24, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 2, pkg: '8 oz can', servings: 48, volL: 0.3, cost: 1, rot: 3, role: 'staple', use: 0.2, from: 'long', notes: 'For pancakes, biscuits and quick breads. Test it: a spoonful in hot water should fizz. Rotate yearly.' },
   { id: 'baking-soda', name: 'Baking soda', category: 'pantry', form: 'box', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: { min: 24, max: 36, source: 'Package label (typical)', storage: 'Cool, dry; airtight', assumptions: 'Unopened' }, serving: '1 tsp', kcal: 0, pkg: '1 lb box', servings: 90, volL: 0.5, cost: 1, rot: 2, role: 'staple', use: 0.05, from: 'long', notes: 'For baking; also useful for cleaning and odors.' },
@@ -359,6 +375,15 @@ const NUTRITION: Record<string, number[]> = {
   'cinnamon': [0, 0, 0.5, 0, 0, 0],
   'soy-sauce': [0, 0, 0, 0, 900, 1],
   'hot-sauce': [0, 0, 0, 0, 100, 0],
+  'ketchup': [0, 0, 0, 4, 160, 0.2],
+  'mustard': [0.2, 0, 0.2, 0, 55, 0.2],
+  'mayo-packets': [9, 1.5, 0, 0, 70, 0],
+  'jelly': [0, 0, 0.2, 10, 5, 0],
+  'syrup': [0, 0, 0, 18, 25, 0],
+  'bbq-sauce': [0, 0, 0.2, 12, 350, 0],
+  'salad-dressing': [12, 2, 0, 1.5, 260, 0.5],
+  'salsa': [0, 0, 0.5, 1, 230, 0.5],
+  'relish': [0, 0, 0.2, 4, 120, 0],
   'vinegar': [0, 0, 0, 0, 0, 0],
   'baking-powder': [0, 0, 0, 0, 480, 0],
   'baking-soda': [0, 0, 0, 0, 1260, 0],
@@ -367,7 +392,7 @@ const NUTRITION: Record<string, number[]> = {
   'vanilla': [0, 0, 0, 0.5, 0, 0],
 };
 /** Foods whose values vary a lot between brands or flavors (assorted meals, bars, cereals). */
-const ROUGH_NUTRITION = new Set(['canned-fish', 'canned-meat', 'canned-soup', 'canned-chili', 'bars', 'ramen', 'cake-mix', 'butter-powder', 'cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
+const ROUGH_NUTRITION = new Set(['salad-dressing', 'bbq-sauce', 'canned-fish', 'canned-meat', 'canned-soup', 'canned-chili', 'bars', 'ramen', 'cake-mix', 'butter-powder', 'cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
 const NUTRITION_SOURCE = 'Typical values for this kind of food (USDA FoodData Central and common labels). Brands differ; check your label.';
 const ROUGH_SOURCE = 'Rough average across brands and flavors; varies a lot. Enter your product’s label values for accuracy.';
 

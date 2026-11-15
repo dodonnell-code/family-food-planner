@@ -400,6 +400,40 @@ describe('planner: variety, favorites and a balanced diet', () => {
   });
 });
 
+describe('planner: condiments', () => {
+  const fam = (ratings: Record<string, RatingCode> = {}) => ['alice', 'dan', 'sam'].map((id) => member(id, { ratings }));
+  const conds = (p: ReturnType<typeof buildPlan>) => p.items.filter((i) => i.bucket === 'condiments').map((i) => i.foodId);
+
+  it('ketchup is always stocked, sized at a tablespoon per person a day', () => {
+    for (const tier of ['short', 'medium', 'long'] as Tier[]) {
+      const p = buildPlan(input(fam(), tier));
+      const k = p.items.find((i) => i.foodId === 'ketchup')!;
+      expect(k.bucket).toBe('condiments');
+      expect(k.servings).toBe(3 * p.days);
+      expect(k.why[0]).toBe('Always stocked');
+    }
+    // Even if everyone rated it low.
+    expect(conds(buildPlan(input(fam({ ketchup: 1 }), 'medium')))).toContain('ketchup');
+  });
+
+  it('basics from 3 days, more from 14 days; ones the family rates low are left out (and listed)', () => {
+    const s = conds(buildPlan(input(fam(), 'short')));
+    expect(s).toEqual(expect.arrayContaining(['ketchup', 'mustard', 'mayo-packets', 'jelly']));
+    expect(s).not.toContain('salsa');
+    const m = buildPlan(input(fam({ relish: 1, salsa: 1 }), 'medium'));
+    expect(conds(m)).toEqual(expect.arrayContaining(['syrup', 'bbq-sauce', 'hot-sauce']));
+    expect(conds(m)).not.toContain('salsa');
+    expect(m.notChosen!.find((n) => n.foodId === 'salsa')?.reason).toMatch(/don’t like it/);
+    expect(m.notChosen!.find((n) => n.foodId === 'relish')?.reason).toBe('Stocked in longer-term plans');
+  });
+
+  it('allergies still apply (mustard left out for a mustard allergy)', () => {
+    const p = buildPlan(input([member('alice', { restrictions: [restr('alice', 'mustard')] }), member('dan')], 'medium'));
+    expect(conds(p)).not.toContain('mustard');
+    expect(conds(p)).toContain('ketchup');
+  });
+});
+
 describe('planner: baking supplies & seasonings', () => {
   const fam = () => ['alice', 'dan', 'sam'].map((id) => member(id));
   const pantry = (p: ReturnType<typeof buildPlan>) => p.items.filter((i) => i.bucket === 'pantry').map((i) => i.foodId);
@@ -421,7 +455,7 @@ describe('planner: baking supplies & seasonings', () => {
     expect(salt.servings).toBe(Math.ceil(0.75 * 3 * 90));
     expect(salt.packages).toBe(Math.ceil(salt.servings / 120));
     expect(l.items.find((i) => i.foodId === 'vanilla')!.packages).toBeGreaterThanOrEqual(1);
-    expect(l.diet!.distinct.total).toBe(l.items.filter((i) => i.bucket !== 'pantry').length);
+    expect(l.diet!.distinct.total).toBe(l.items.filter((i) => i.bucket !== 'pantry' && i.bucket !== 'condiments').length);
   });
 
   it('allergy rules still apply (soy sauce left out for a soy allergy)', () => {

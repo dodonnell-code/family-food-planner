@@ -197,7 +197,9 @@ export type FoodCategory =
   | 'fat-snack'
   | 'beverage'
   /** Baking supplies and seasonings: sized by use per person per day, not by calories. */
-  | 'pantry';
+  | 'pantry'
+  /** Condiments & sauces: sized by use per person per day like pantry items, but surveyed. */
+  | 'condiment';
 
 export type FoodForm = 'canned' | 'pouch' | 'dry' | 'freeze-dried' | 'dehydrated' | 'jar' | 'box' | 'bottle' | 'packet' | 'bulk';
 
@@ -345,6 +347,10 @@ export interface Survey {
   needsRefresh?: boolean;
   /** Why a retake is suggested (shown to the admin); default: restrictions or membership changed. */
   refreshReason?: string;
+  /** Only these foods are asked (new since the last survey); other answers were copied from it. */
+  onlyNew?: ID[];
+  /** Every food the survey had asked this person about by the time it was submitted. */
+  asked?: ID[];
   /** Admin override: "Would refuse" answers (food ids) to stop applying until the next survey. */
   ignoredRefusals?: ID[];
   updatedAt: ISODate;
@@ -365,6 +371,18 @@ export interface SurveyAnswer {
   /** Kinds of this food the person likes (ids from FoodItem.kinds). */
   kinds?: string[];
   comment?: string;
+  /** "Can't eat it" follow-up: why, and for allergies/sensitivities how careful to be. */
+  blockedInfo?: BlockedInfo;
+}
+
+export interface BlockedInfo {
+  type?: RestrictionType;
+  /** What they react to: allergen codes (e.g. 'peanut') and/or `food:<name>`. Empty = the food itself. */
+  subjects?: string[];
+  severity?: 'mild' | 'moderate' | 'severe';
+  strictness?: Strictness;
+  /** Cross-contact ("may contain") worry: 'concern', 'fine' or 'unsure' (treated as a concern). */
+  crossContact?: 'concern' | 'fine' | 'unsure';
 }
 
 // ---------- Planning ----------

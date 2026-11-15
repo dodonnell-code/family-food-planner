@@ -130,7 +130,9 @@ async function applySuggestion(c: ChangeRecord, database: PlannerDB, ts: string)
       await database.restrictions.add({
         id: c.entityId, memberId: c.memberId!, type: a.type as MemberRestriction['type'], subject: a.subject as string,
         // Approved by the admin, so it counts as confirmed.
-        verifiedAt: ts, cautionCrossContact: a.type === 'allergy', active: true, createdAt: ts,
+        verifiedAt: ts, cautionCrossContact: typeof a.cautionCrossContact === 'boolean' ? a.cautionCrossContact : a.type === 'allergy', active: true, createdAt: ts,
+        ...(a.severity ? { severity: a.severity as MemberRestriction['severity'] } : {}),
+        ...(a.strictness ? { strictness: a.strictness as MemberRestriction['strictness'] } : {}),
       });
     }
   } else {

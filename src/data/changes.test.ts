@@ -158,6 +158,55 @@ describe('respondent suggestions', () => {
   });
 });
 
+describe('"Can’t eat it" follow-up', () => {
+  it('becomes a pending restriction with the type, subject, severity and cross-contact given', async () => {
+    const { saveAnswer } = await import('./repo');
+    const m = await addMember({ displayName: 'Sam' }, db);
+    const s = await startOrResumeSurvey(m.id, db);
+    await saveAnswer(s.id, 'peanut-butter', 'blocked', { blockedInfo: { type: 'allergy', subjects: ['peanut'], severity: 'severe', crossContact: 'unsure' } }, db);
+    await saveAnswer(s.id, 'shelf-milk', 'blocked', { blockedInfo: { type: 'intolerance', strictness: 'avoid' } }, db);
+    await saveAnswer(s.id, 'canned-fruit', 'blocked', { blockedInfo: { type: 'texture', subjects: ['food:Pineapple'] } }, db);
+    await submitSurvey(s.id, db);
+    const sugs = (await pending()).filter((c) => c.source === 'respondent');
+    const after = (subject: string) => sugs.find((c) => c.after?.subject === subject)?.after;
+    expect(after('peanut')).toMatchObject({ type: 'allergy', severity: 'severe', cautionCrossContact: true });
+    expect(String(after('peanut')?.reason)).toMatch(/Not sure about cross-contact/);
+    expect(after('food:Shelf-stable milk (UHT boxes)')).toMatchObject({ type: 'intolerance', strictness: 'avoid' });
+    expect(after('food:Pineapple')).toMatchObject({ type: 'texture' });
+
+    await approveAll(db);
+    const rs = await db.restrictions.where('memberId').equals(m.id).toArray();
+    expect(rs.find((r) => r.subject === 'peanut')).toMatchObject({ type: 'allergy', severity: 'severe', cautionCrossContact: true });
+    expect(rs.find((r) => r.subject === 'food:Shelf-stable milk (UHT boxes)')).toMatchObject({ type: 'intolerance', strictness: 'avoid' });
+  });
+});
+
+describe('new survey questions', () => {
+  it('offers only foods added since the last survey, keeping the other answers', async () => {
+    const { saveAnswer, newSurveyQuestions } = await import('./repo');
+    const m = await addMember({ displayName: 'Sam' }, db);
+    const s1 = await startOrResumeSurvey(m.id, db);
+    await saveAnswer(s1.id, 'white-rice', 5, {}, db);
+    await submitSurvey(s1.id, db);
+    expect(await newSurveyQuestions(m.id, db)).toEqual([]); // skipped questions aren't "new"
+
+    // A survey from before condiments were added (no record of what it asked).
+    await db.surveys.update(s1.id, { asked: undefined, catalogVersion: 15 });
+    const fresh = await newSurveyQuestions(m.id, db);
+    expect(fresh).toEqual(expect.arrayContaining(['ketchup', 'mustard', 'hot-sauce']));
+    expect(fresh).not.toContain('white-rice');
+    const { computeAttention } = await import('../domain/attention');
+    expect((await computeAttention(db)).find((i) => i.id === `newq:${m.id}`)?.title).toMatch(/new survey questions/);
+
+    const s2 = await startOrResumeSurvey(m.id, db, { onlyNew: true });
+    expect(s2.onlyNew?.sort()).toEqual([...fresh].sort());
+    expect((await db.answers.get(`${s2.id}:white-rice`))?.rating).toBe(5);
+    await saveAnswer(s2.id, 'ketchup', 5, {}, db);
+    await submitSurvey(s2.id, db);
+    expect(await newSurveyQuestions(m.id, db)).toEqual([]);
+  });
+});
+
 describe('survey refusals and never-stock answers', () => {
   it('lists refusals, can stop/restart applying one, and the change can be undone', async () => {
     const { saveAnswer, updateSurveyProgress, setRefusalIgnored } = await import('./repo');

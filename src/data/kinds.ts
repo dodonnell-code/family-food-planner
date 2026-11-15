@@ -10,6 +10,27 @@ const VEGAN = ['vegan', 'vegetarian'];
 const FISH = ['fish', 'high-protein'];
 
 export const SEED_KINDS: Record<string, FoodKind[]> = {
+  mustard: [
+    k('yellow', 'Yellow', '🌭', { tags: VEGAN }), k('dijon', 'Dijon', '🫙', { tags: VEGAN }),
+    k('spicy-brown', 'Spicy brown', '🌶️', { tags: VEGAN }), k('honey-mustard', 'Honey mustard', '🍯', { tags: VEG }),
+  ],
+  jelly: [
+    k('grape', 'Grape', '🍇'), k('strawberry', 'Strawberry', '🍓'), k('raspberry', 'Raspberry', '🍒'),
+    k('mixed-berry', 'Mixed berry', '🫐'), k('apricot', 'Apricot', '🍑'), k('marmalade', 'Orange marmalade', '🍊'),
+  ],
+  'salad-dressing': [
+    k('ranch', 'Ranch', '🥛', { contains: ['milk', 'egg'], tags: VEG }),
+    k('italian', 'Italian', '🫒', { tags: VEGAN }),
+    k('honey-mustard', 'Honey mustard', '🍯', { contains: ['mustard', 'egg'], tags: VEG }),
+    k('caesar', 'Caesar', '🥗', { contains: ['milk', 'egg', 'fish'] }),
+    k('thousand-island', 'Thousand Island', '🍔', { contains: ['egg'], tags: VEG }),
+    k('balsamic', 'Balsamic vinaigrette', '🍇', { tags: VEGAN }),
+  ],
+  salsa: [k('mild', 'Mild', '🍅'), k('medium', 'Medium', '🌶️'), k('hot', 'Hot', '🔥'), k('verde', 'Salsa verde', '🫑')],
+  'hot-sauce': [
+    k('louisiana', 'Louisiana-style', '🌶️'), k('sriracha', 'Sriracha', '🔥'), k('chipotle', 'Chipotle', '🫑'),
+    k('habanero', 'Habanero', '🥵'), k('green', 'Green (jalapeño)', '🟢'),
+  ],
   'canned-meat': [
     k('chicken', 'Chicken', '🍗', { tags: ['poultry', 'high-protein'] }),
     k('luncheon', 'Luncheon meat (Spam-style)', '🥫', { tags: ['pork', 'high-protein'] }),

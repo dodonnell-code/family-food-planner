@@ -248,18 +248,22 @@ export interface PlanResult {
 }
 
 // ---------------- Buckets (menu structure) ----------------
-export type Bucket = 'mains' | 'starches' | 'produce' | 'snacks' | 'drinks' | 'pantry';
-const BUCKET_SHARE: Record<Bucket, number> = { mains: 0.42, starches: 0.25, produce: 0.13, snacks: 0.12, drinks: 0.08, pantry: 0 };
+export type Bucket = 'mains' | 'starches' | 'produce' | 'snacks' | 'drinks' | 'condiments' | 'pantry';
+const BUCKET_SHARE: Record<Bucket, number> = { mains: 0.42, starches: 0.25, produce: 0.13, snacks: 0.12, drinks: 0.08, condiments: 0, pantry: 0 };
+/** Groups sized by use per person per day (not calories), outside the variety picks. */
+const USE_SIZED: FoodCategory[] = ['condiment', 'pantry'];
+const USE_SIZED_BUCKETS: Bucket[] = ['condiments', 'pantry'];
 const BUCKET_OF: Record<FoodCategory, Bucket> = {
   meal: 'mains', protein: 'mains', legume: 'mains',
   grain: 'starches',
   fruit: 'produce', vegetable: 'produce',
   'fat-snack': 'snacks',
   'dairy-alt': 'drinks', beverage: 'drinks',
+  condiment: 'condiments',
   pantry: 'pantry',
 };
 export const BUCKET_LABEL: Record<Bucket, string> = {
-  mains: 'Main dishes & proteins', starches: 'Grains & starches', produce: 'Fruit & vegetables', snacks: 'Snacks & spreads', drinks: 'Drinks & milk', pantry: 'Baking & seasonings',
+  mains: 'Main dishes & proteins', starches: 'Grains & starches', produce: 'Fruit & vegetables', snacks: 'Snacks & spreads', drinks: 'Drinks & milk', condiments: 'Condiments & sauces', pantry: 'Baking & seasonings',
 };
 /** How many different foods to choose per bucket, by tier (more variety for longer horizons). */
 /**
@@ -281,17 +285,17 @@ export const STAPLES: Record<Tier, { label: string; options: ID[] }[]> = {
   ],
 };
 
-/** Foods every planner-built plan includes (when safe for everyone). Peanut butter: the household's must-have. */
-const ALWAYS_STOCKED: ID[] = ['peanut-butter'];
+/** Foods every plan includes (when safe for everyone). Peanut butter and ketchup: the household's must-haves. */
+const ALWAYS_STOCKED: ID[] = ['peanut-butter', 'ketchup'];
 
 /** Minimum distinct foods per group (variety grows with the length of the plan). */
 const PICKS: Record<Tier, Record<Bucket, number>> = {
-  short: { mains: 4, starches: 3, produce: 4, snacks: 2, drinks: 2, pantry: 0 },
-  medium: { mains: 8, starches: 5, produce: 6, snacks: 4, drinks: 3, pantry: 0 },
-  long: { mains: 10, starches: 6, produce: 6, snacks: 4, drinks: 3, pantry: 0 },
+  short: { mains: 4, starches: 3, produce: 4, snacks: 2, drinks: 2, condiments: 0, pantry: 0 },
+  medium: { mains: 8, starches: 5, produce: 6, snacks: 4, drinks: 3, condiments: 0, pantry: 0 },
+  long: { mains: 10, starches: 6, produce: 6, snacks: 4, drinks: 3, condiments: 0, pantry: 0 },
 };
 /** Family favorites can add up to this many foods per group beyond the minimum. */
-const FAVORITE_EXTRA: Record<Bucket, number> = { mains: 4, starches: 3, produce: 3, snacks: 3, drinks: 2, pantry: 0 };
+const FAVORITE_EXTRA: Record<Bucket, number> = { mains: 4, starches: 3, produce: 3, snacks: 3, drinks: 2, condiments: 0, pantry: 0 };
 
 /**
  * A family favorite: rated by at least half the household, average 4/5 or better, nobody
@@ -310,10 +314,10 @@ const ROLE_UTILITY: Record<FoodItem['mealRole'], number> = { main: 1, staple: 0.
 const NO_HEAT: PrepMethod[] = ['ready-to-eat', 'add-cold-water'];
 /** Most servings of any one food per person per day, by category, so no single food dominates. */
 const SERVING_CAP: Record<FoodCategory, number> = {
-  protein: 0.5, legume: 1, meal: 1, grain: 2, fruit: 1.5, vegetable: 1.5, 'fat-snack': 1, 'dairy-alt': 1, beverage: 1, pantry: 1,
+  protein: 0.5, legume: 1, meal: 1, grain: 2, fruit: 1.5, vegetable: 1.5, 'fat-snack': 1, 'dairy-alt': 1, beverage: 1, condiment: 1, pantry: 1,
 };
 /** Most servings per person per day from a whole group (Infinity = calorie carriers). */
-const BUCKET_SERVINGS: Record<Bucket, number> = { mains: Infinity, starches: Infinity, produce: 2.5, snacks: 1.5, drinks: 1.5, pantry: Infinity };
+const BUCKET_SERVINGS: Record<Bucket, number> = { mains: Infinity, starches: Infinity, produce: 2.5, snacks: 1.5, drinks: 1.5, condiments: Infinity, pantry: Infinity };
 /** No single food may supply more than this share of its group's calories (variety). */
 const MAX_ITEM_SHARE: Record<Tier, number> = { short: 0.5, medium: 0.35, long: 0.3 };
 const PROTEIN_KINDS = ['fish', 'beef', 'poultry', 'pork'];
@@ -507,7 +511,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   // ---- 3. Score and choose a varied set ----
   const allScored = eligible
     // Cooking oil and similar ingredients aren't meals; rapid-carb treatments are reserved above.
-    .filter((f) => forced.has(f.id) || carried.has(f.id) || f.category === 'pantry' || (!isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple')))
+    .filter((f) => forced.has(f.id) || carried.has(f.id) || USE_SIZED.includes(f.category) || (!isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple')))
     .map((f) => ({ f, ...scoreFood(f, members, tier, days) }));
   // Admin changes (swaps, leaving out, additions) never pull in other new foods by themselves,
   // and never push out foods the plan would otherwise have: the plan keeps the foods it would
@@ -797,7 +801,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const notChosen: NotChosen[] = [];
   for (const x of allScored) {
     const f = x.f;
-    if (inPlanIds.has(f.id) || f.category === 'pantry') continue;
+    if (inPlanIds.has(f.id) || USE_SIZED.includes(f.category)) continue;
     const b = BUCKET_OF[f.category];
     const same = items.filter((i) => i.bucket === b && i.foodId !== f.id);
     const picked = same.map((i) => byScored.get(i.foodId)).filter((y): y is Scored => !!y);
@@ -822,23 +826,35 @@ export function buildPlan(input: PlanInput): PlanResult {
       || (shortCalories > 0 ? Number(MAIN.includes(z.bucket)) - Number(MAIN.includes(a.bucket)) : 0) || z.score - a.score)
     .slice(0, 8);
 
-  // ---- Baking supplies & seasonings: sized by use per person per day (not calories) ----
-  // Basics (salt, pepper, oil, sugar, bouillon) in every plan; seasonings from the 14-day plan;
-  // baking supplies in the 90-day plan. Admin additions and anything carried in always stay.
-  for (const x of scored.filter((y) => y.f.category === 'pantry')) {
+  // ---- Condiments, baking supplies & seasonings: sized by use per person per day (not calories) ----
+  // Basics (salt, pepper, oil, sugar, bouillon; ketchup, mustard, mayo, jelly) in every plan;
+  // more from the 14-day plan; baking supplies in the 90-day plan. Admin additions, always-stocked
+  // foods and anything carried in always stay. Condiments the family rated low are left out.
+  for (const x of scored.filter((y) => USE_SIZED.includes(y.f.category))) {
     const f = x.f;
     const bi = carried.get(f.id);
     const p = f.pantry ?? { perPersonDay: 0.1, fromTier: 'long' as Tier };
-    if (!bi && !forced.has(f.id) && TIER_ORDER.indexOf(tier) < TIER_ORDER.indexOf(p.fromTier)) continue;
+    const always = ALWAYS_STOCKED.includes(f.id);
+    const keepIt = !!bi || forced.has(f.id) || always;
+    const bucket = BUCKET_OF[f.category];
+    if (!keepIt && TIER_ORDER.indexOf(tier) < TIER_ORDER.indexOf(p.fromTier)) {
+      if (f.category === 'condiment') notChosen.push({ foodId: f.id, name: f.name, bucket, score: x.score, reason: 'Stocked in longer-term plans' });
+      continue;
+    }
+    if (!keepIt && f.category === 'condiment' && x.factors.acceptance < 0.3) {
+      const no = x.verdicts.filter((v) => v.status === 'dislike' || v.status === 'refuse').map((v) => nameOf(v.memberId));
+      notChosen.push({ foodId: f.id, name: f.name, bucket, score: x.score, reason: no.length ? `${no.join(', ')} ${no.length === 1 ? 'doesn’t' : 'don’t'} like it` : 'Most of the family rated it low' });
+      continue;
+    }
     if (!people) continue;
     const servings = Math.max(bi?.servings ?? 0, Math.ceil(p.perPersonDay * people * days));
     const packages = Math.max(bi?.packages ?? 0, 1, Math.ceil(servings / f.package.servingsPerPackage));
-    const why = [forced.has(f.id) ? addedLabel : bi && baseInfo ? `Includes the ${baseInfo.days}-day supply’s ${bi.packages}` : 'Pantry basic', `about ${p.perPersonDay} × ${f.nutrition.servingDesc} per person a day`, `keeps ${fmtMonths(f.shelfLife.unopenedMonthsMin)}–${fmtMonths(f.shelfLife.unopenedMonthsMax)}`];
+    const why = [forced.has(f.id) ? addedLabel : bi && baseInfo ? `Includes the ${baseInfo.days}-day supply’s ${bi.packages}` : always ? 'Always stocked' : f.category === 'condiment' ? 'Condiment' : 'Pantry basic', `about ${p.perPersonDay} × ${f.nutrition.servingDesc} per person a day`, `keeps ${fmtMonths(f.shelfLife.unopenedMonthsMin)}–${fmtMonths(f.shelfLife.unopenedMonthsMax)}`];
     const flags: string[] = [];
     for (const r of overrides.find((y) => y.foodId === f.id)?.unsafeFor ?? carriedUnsafe.get(f.id) ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override: store it apart and labeled.`);
     for (const v of x.verdicts) if (v.status === 'avoid') flags.push(`${nameOf(v.memberId)}: ${v.notes.find((n) => n.includes('avoid')) ?? 'avoid when possible'}`);
     items.push({
-      foodId: f.id, name: f.name, category: f.category, bucket: 'pantry', score: x.score, factors: x.factors, kinds: kindNotes(f),
+      foodId: f.id, name: f.name, category: f.category, bucket, score: x.score, factors: x.factors, kinds: kindNotes(f),
       servings, packages, leftoverServings: round1(packages * f.package.servingsPerPackage - servings),
       calories: Math.round(servings * f.nutrition.caloriesPerServing),
       packageDesc: f.package.description, servingsPerPackage: f.package.servingsPerPackage,
@@ -895,7 +911,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       starches: items.filter((i) => i.bucket === 'starches').length,
       fruits: items.filter((i) => i.category === 'fruit').length,
       vegetables: items.filter((i) => i.category === 'vegetable').length,
-      total: items.filter((i) => i.bucket !== 'pantry').length,
+      total: items.filter((i) => !USE_SIZED_BUCKETS.includes(i.bucket)).length,
     },
   };
   if (people && items.length) {

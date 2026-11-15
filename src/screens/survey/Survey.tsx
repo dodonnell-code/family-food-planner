@@ -4,22 +4,26 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { db, uid } from '../../data/db';
 import { inProgressSurvey, saveAnswer, submitSurvey, updateSurveyProgress } from '../../data/repo';
 import { checkFood, checkKinds, isExcluded } from '../../domain/safety';
-import { firstName, RESTRICTION_TYPES, subjectLabel } from '../../app/ui';
-import type { FoodCategory, FoodItem, Member, MemberRestriction, PrepTolerance, RatingCode, RestrictionType, Suggestion, Survey as SurveyT, SurveyAnswer } from '../../domain/types';
+import { firstName, RESTRICTION_TYPES, STRICTNESS, subjectLabel } from '../../app/ui';
+import { SURVEYED_CATEGORIES, type SurveyedCategory } from '../../domain/surveyScope';
+import type { BlockedInfo, FoodItem, Member, MemberRestriction, PrepTolerance, RatingCode, RestrictionType, Strictness, Suggestion, Survey as SurveyT, SurveyAnswer } from '../../domain/types';
 import { useSession } from '../../app/session';
 import './survey.css';
 
-const CATEGORIES: { id: FoodCategory; title: string; blurb: string }[] = [
-  { id: 'protein', title: 'Meat, fish & protein', blurb: 'Canned, pouch and dried proteins.' },
-  { id: 'legume', title: 'Beans & lentils', blurb: 'Canned beans are ready to eat. Dry ones need cooking.' },
-  { id: 'grain', title: 'Grains, bread & cereal', blurb: 'Crackers, cereal, rice, pasta, oats.' },
-  { id: 'fruit', title: 'Fruit', blurb: 'Canned, freeze-dried and applesauce. Tell us which kinds you like.' },
-  { id: 'vegetable', title: 'Vegetables', blurb: 'Canned and freeze-dried. Tell us which kinds you like.' },
-  { id: 'meal', title: 'Ready meals & soups', blurb: 'Soups, chili, pouches and freeze-dried meals. Tell us which kinds you like.' },
-  { id: 'fat-snack', title: 'Snacks & spreads', blurb: 'Nut butters, bars, nuts and treats.' },
-  { id: 'dairy-alt', title: 'Milk & milk alternatives', blurb: 'Shelf-stable and powdered.' },
-  { id: 'beverage', title: 'Drinks', blurb: 'Juice, drink mixes, coffee, tea and cocoa.' },
-];
+const CATEGORY_TEXT: Record<SurveyedCategory, { title: string; blurb: string }> = {
+  protein: { title: 'Meat, fish & protein', blurb: 'Canned, pouch and dried proteins.' },
+  legume: { title: 'Beans & lentils', blurb: 'Canned beans are ready to eat. Dry ones need cooking.' },
+  grain: { title: 'Grains, bread & cereal', blurb: 'Crackers, cereal, rice, pasta, oats.' },
+  fruit: { title: 'Fruit', blurb: 'Canned, freeze-dried and applesauce. Tell us which kinds you like.' },
+  vegetable: { title: 'Vegetables', blurb: 'Canned and freeze-dried. Tell us which kinds you like.' },
+  meal: { title: 'Ready meals & soups', blurb: 'Soups, chili, pouches and freeze-dried meals. Tell us which kinds you like.' },
+  'fat-snack': { title: 'Snacks & spreads', blurb: 'Nut butters, bars, nuts and treats.' },
+  'dairy-alt': { title: 'Milk & milk alternatives', blurb: 'Shelf-stable and powdered.' },
+  beverage: { title: 'Drinks', blurb: 'Juice, drink mixes, coffee, tea and cocoa.' },
+  condiment: { title: 'Condiments & sauces', blurb: 'Ketchup, mustard, jelly, syrup, dressings and more.' },
+};
+const CATEGORIES = SURVEYED_CATEGORIES.map((id) => ({ id, ...CATEGORY_TEXT[id] }));
+
 
 export const RATINGS: { v: RatingCode; emoji: string; label: string }[] = [
   { v: 5, emoji: '😍', label: 'Love it' },
@@ -33,14 +37,16 @@ export const RATINGS: { v: RatingCode; emoji: string; label: string }[] = [
 
 type Step = { kind: 'intro' } | { kind: 'category'; cat: (typeof CATEGORIES)[number] } | { kind: 'prep' } | { kind: 'restrictions' } | { kind: 'open' } | { kind: 'review' };
 
-const STEPS: Step[] = [
-  { kind: 'intro' },
-  ...CATEGORIES.map((cat) => ({ kind: 'category' as const, cat })),
-  { kind: 'prep' },
-  { kind: 'restrictions' },
-  { kind: 'open' },
-  { kind: 'review' },
-];
+/** All steps; with `onlyNew`, just the groups that have new questions. */
+function buildSteps(foods: FoodItem[], onlyNew?: Set<string>): Step[] {
+  const cats = onlyNew ? CATEGORIES.filter((c) => foods.some((f) => f.category === c.id && onlyNew.has(f.id))) : CATEGORIES;
+  return [
+    { kind: 'intro' },
+    ...cats.map((cat) => ({ kind: 'category' as const, cat })),
+    ...(onlyNew ? [] : [{ kind: 'prep' }, { kind: 'restrictions' }, { kind: 'open' }] as Step[]),
+    { kind: 'review' },
+  ];
+}
 
 const PREP_METHOD_TEXT: Record<FoodItem['prep']['method'], string> = {
   'ready-to-eat': 'Ready to eat',
@@ -79,9 +85,13 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
 }) {
   const nav = useNavigate();
   const name = firstName(member);
+  const onlyNew = useMemo(() => (survey.onlyNew ? new Set(survey.onlyNew) : undefined), [survey.onlyNew]);
+  // Only the new questions are asked in a "new questions only" survey.
+  const asked = useMemo(() => (onlyNew ? foods.filter((f) => onlyNew.has(f.id)) : foods), [foods, onlyNew]);
+  const STEPS = useMemo(() => buildSteps(foods, onlyNew), [foods, onlyNew]);
   const [step, setStep] = useState(Math.min(survey.currentStep, STEPS.length - 1));
   const answerMap = useMemo(() => new Map(answers.map((a) => [a.foodItemId, a])), [answers]);
-  const cur = STEPS[step];
+  const cur = STEPS[Math.min(step, STEPS.length - 1)];
   const bodyRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -112,14 +122,14 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
 
       <main className="survey-body" ref={bodyRef}>
         <div className="survey-content">
-        {cur.kind === 'intro' && <Intro name={name} />}
+        {cur.kind === 'intro' && <Intro name={name} newCount={onlyNew?.size} />}
         {cur.kind === 'category' && (
-          <CategoryStep cat={cur.cat} foods={foods.filter((f) => f.category === cur.cat.id)} restrictions={restrictions} answers={answerMap} surveyId={survey.id} />
+          <CategoryStep cat={cur.cat} foods={asked.filter((f) => f.category === cur.cat.id)} restrictions={restrictions} answers={answerMap} surveyId={survey.id} />
         )}
         {cur.kind === 'prep' && <PrepStep survey={survey} />}
         {cur.kind === 'restrictions' && <RestrictionsStep survey={survey} member={member} restrictions={restrictions} />}
         {cur.kind === 'open' && <OpenStep survey={survey} />}
-        {cur.kind === 'review' && <ReviewStep survey={survey} foods={foods} restrictions={restrictions} answers={answerMap}
+        {cur.kind === 'review' && <ReviewStep survey={survey} steps={STEPS} foods={asked} restrictions={restrictions} answers={answerMap}
           onSubmit={async () => { await submitSurvey(survey.id); nav('/?done=1', { replace: true }); }} onJump={go} />}
         </div>
       </main>
@@ -136,7 +146,17 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
   );
 }
 
-function Intro({ name }: { name: string }) {
+function Intro({ name, newCount }: { name: string; newCount?: number }) {
+  if (newCount) return (
+    <div className="stack" style={{ maxWidth: 640 }}>
+      <h1>Welcome back, {name}! 👋</h1>
+      <p>We added some foods since your last survey. There {newCount === 1 ? 'is just 1 new question' : `are just ${newCount} new questions`}; all your other answers are kept.</p>
+      <ul className="stack" style={{ paddingLeft: 20, gap: 6 }}>
+        <li>Your answers are <strong>private</strong>. Other family members can’t see them.</li>
+        <li>Skip anything you’re not sure about. “Not tried” is a fine answer.</li>
+      </ul>
+    </div>
+  );
   return (
     <div className="stack" style={{ maxWidth: 640 }}>
       <h1>Hi {name}! 👋</h1>
@@ -196,7 +216,7 @@ function FoodCard({ food, answer, surveyId, restrictions }: { food: FoodItem; an
   const kinds = food.kinds?.length ? checkKinds(food, restrictions).filter((x) => !x.result.blocked.length).map((x) => x.kind) : [];
   const showKinds = kinds.length > 0 && typeof rating === 'number' && rating >= 3;
 
-  const rate = (v: RatingCode) => saveAnswer(surveyId, food.id, v, { onlyPreparedCertainWay: certainWay && typeof v === 'number', prepNotes: note || undefined, kinds: typeof v === 'number' && v >= 3 ? answer?.kinds : undefined });
+  const rate = (v: RatingCode) => saveAnswer(surveyId, food.id, v, { onlyPreparedCertainWay: certainWay && typeof v === 'number', prepNotes: note || undefined, kinds: typeof v === 'number' && v >= 3 ? answer?.kinds : undefined, blockedInfo: v === 'blocked' ? answer?.blockedInfo : undefined });
   const saveExtra = (cw: boolean, n: string) => rating !== undefined && saveAnswer(surveyId, food.id, rating, { onlyPreparedCertainWay: cw, prepNotes: n || undefined, kinds: answer?.kinds });
   const toggleKind = (id: string) => {
     if (rating === undefined) return;
@@ -238,7 +258,7 @@ function FoodCard({ food, answer, surveyId, restrictions }: { food: FoodItem; an
           </div>
         </div>
       )}
-      {rating === 'blocked' && <p className="small notice" style={{ margin: 0 }}>Thanks for telling us. An adult will check this and make sure it’s never planned for you.</p>}
+      {rating === 'blocked' && <BlockedFollowUp food={food} info={answer?.blockedInfo ?? {}} save={(info) => saveAnswer(surveyId, food.id, 'blocked', { blockedInfo: info })} />}
       {preference && (
         <div className="stack" style={{ gap: 8 }}>
           <label className="inline">
@@ -251,6 +271,109 @@ function FoodCard({ food, answer, surveyId, restrictions }: { food: FoodItem; an
         </div>
       )}
     </article>
+  );
+}
+
+// ---------- "Can't eat it" follow-up ----------
+const WHY: { type: RestrictionType; emoji: string; label: string }[] = [
+  { type: 'allergy', emoji: '🤧', label: 'Allergy' },
+  { type: 'intolerance', emoji: '🤢', label: 'Sensitivity (it makes me feel sick)' },
+  { type: 'special-diet', emoji: '🥗', label: 'Special diet' },
+  { type: 'religious-ethical', emoji: '🙏', label: 'Religious or personal beliefs' },
+  { type: 'texture', emoji: '🦷', label: 'Hard to chew or swallow' },
+  { type: 'medical-feeding', emoji: '🩺', label: 'Medical reason' },
+  { type: 'cannot-eat', emoji: '🤷', label: 'Something else / not sure' },
+];
+const SEVERITY: { v: NonNullable<BlockedInfo['severity']>; emoji: string; label: string; help: string }[] = [
+  { v: 'mild', emoji: '🙂', label: 'Mild', help: 'Itchy mouth, a few hives or an upset tummy' },
+  { v: 'moderate', emoji: '😣', label: 'Moderate', help: 'Lots of hives, swelling or throwing up' },
+  { v: 'severe', emoji: '🚑', label: 'Severe', help: 'Trouble breathing, or needs an EpiPen or a hospital' },
+];
+const STRICT_HELP: Record<Strictness, { emoji: string; help: string }> = {
+  strict: { emoji: '⛔', help: 'Even a little makes me sick' },
+  avoid: { emoji: '✋', help: 'A little is OK now and then, but I’d rather not' },
+  minor: { emoji: '🤏', help: 'It bothers me a bit, but I can manage' },
+};
+const CROSS: { v: NonNullable<BlockedInfo['crossContact']>; emoji: string; label: string }[] = [
+  { v: 'concern', emoji: '⚠️', label: 'Yes, that’s a problem' },
+  { v: 'fine', emoji: '👍', label: 'No, that’s fine' },
+  { v: 'unsure', emoji: '❓', label: 'Not sure' },
+];
+
+/** Keep only the answers that apply to the chosen reason. */
+function cleanBlocked(i: BlockedInfo): BlockedInfo {
+  const allergyLike = i.type === 'allergy' || i.type === 'intolerance';
+  const askCross = i.type === 'allergy' || (i.type === 'intolerance' && (i.strictness ?? 'strict') === 'strict');
+  return {
+    type: i.type,
+    subjects: i.subjects?.filter((s) => allergyLike || s.startsWith('food:')),
+    severity: i.type === 'allergy' ? i.severity : undefined,
+    strictness: i.type === 'intolerance' ? i.strictness : undefined,
+    crossContact: askCross ? i.crossContact : undefined,
+  };
+}
+
+function Choice<T extends string>({ label, options, value, onPick }: {
+  label: string; options: { v: T; emoji: string; label: string; help?: string }[]; value?: T; onPick: (v: T) => void;
+}) {
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <p style={{ margin: 0 }}><strong>{label}</strong></p>
+      <div className="kinds" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button key={o.v} type="button" role="radio" aria-checked={value === o.v} className={`kind ${value === o.v ? 'on' : ''}`} onClick={() => onPick(o.v)}>
+            <span className="emoji" aria-hidden>{o.emoji}</span>
+            <span>{o.label}</span>
+            {o.help && <span className="small" style={{ fontWeight: 400 }}>{o.help}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Asks why someone can't eat a food, then (for allergies and sensitivities) what exactly and how careful to be. */
+function BlockedFollowUp({ food, info, save }: { food: FoodItem; info: BlockedInfo; save: (info: BlockedInfo) => void }) {
+  const set = (patch: Partial<BlockedInfo>) => save(cleanBlocked({ ...info, ...patch }));
+  const allergyLike = info.type === 'allergy' || info.type === 'intolerance';
+  const askCross = info.type === 'allergy' || (info.type === 'intolerance' && (info.strictness ?? 'strict') === 'strict');
+  const lower = food.name.toLowerCase();
+  // What exactly: the food's allergens (for allergies/sensitivities) and its kinds.
+  const allergens = allergyLike ? [...new Set([...food.allergens.contains, ...(food.allergens.mayContain ?? []), ...(food.kinds ?? []).flatMap((k) => [...(k.contains ?? []), ...(k.mayContain ?? [])])])] : [];
+  const kinds = (food.kinds ?? []).map((k) => ({ v: `food:${k.name}`, emoji: k.icon ?? '🍽️', label: k.name }));
+  const subjectOptions = [...allergens.map((a) => ({ v: a, emoji: '🧪', label: subjectLabel(a) })), ...kinds];
+  const subjects = info.subjects ?? [];
+  const toggle = (s: string) => set({ subjects: subjects.includes(s) ? subjects.filter((x) => x !== s) : [...subjects, s] });
+  return (
+    <div className="stack notice" style={{ gap: 14, margin: 0 }}>
+      <Choice label={`Why can’t you eat ${lower}?`} options={WHY.map((w) => ({ v: w.type, emoji: w.emoji, label: w.label }))} value={info.type} onPick={(t) => set({ type: t })} />
+      {info.type && subjectOptions.length > 0 && (
+        <div className="stack" style={{ gap: 8 }}>
+          <p style={{ margin: 0 }}>
+            <strong>{allergyLike ? `What in ${lower} ${info.type === 'allergy' ? 'are you allergic to' : 'bothers you'}?` : `Which kinds can’t you eat?`}</strong>{' '}
+            <span className="muted small">Tap all that apply. Tap none if it’s all {lower}{allergyLike ? ' or you’re not sure' : ''}.</span>
+          </p>
+          <div className="kinds" role="group" aria-label={`What you can’t have in ${food.name}`}>
+            {subjectOptions.map((o) => (
+              <button key={o.v} type="button" className={`kind ${subjects.includes(o.v) ? 'on' : ''}`} aria-pressed={subjects.includes(o.v)} onClick={() => toggle(o.v)}>
+                <span className="emoji" aria-hidden>{o.emoji}</span>
+                <span>{o.label}</span>
+                {subjects.includes(o.v) && <span className="check" aria-hidden>✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {info.type === 'allergy' && <Choice label="How bad is the reaction?" options={SEVERITY} value={info.severity} onPick={(v) => set({ severity: v })} />}
+      {info.type === 'intolerance' && (
+        <Choice label="How careful do we need to be?" value={info.strictness} onPick={(v) => set({ strictness: v })}
+          options={STRICTNESS.map((s) => ({ v: s.code, emoji: STRICT_HELP[s.code].emoji, label: s.label, help: STRICT_HELP[s.code].help }))} />
+      )}
+      {askCross && (
+        <Choice label="Is cross-contamination a worry? (food made in the same factory or kitchen, or labels that say “may contain”)" options={CROSS} value={info.crossContact} onPick={(v) => set({ crossContact: v })} />
+      )}
+      <p className="small" style={{ margin: 0 }}>Thanks for telling us. An adult will check this and make sure it’s never planned for you.</p>
+    </div>
   );
 }
 
@@ -397,22 +520,25 @@ function OpenStep({ survey }: { survey: SurveyT }) {
   );
 }
 
-function ReviewStep({ survey, foods, restrictions, answers, onSubmit, onJump }: {
-  survey: SurveyT; foods: FoodItem[]; restrictions: MemberRestriction[]; answers: Map<string, SurveyAnswer>; onSubmit: () => Promise<void>; onJump: (step: number) => void;
+function ReviewStep({ survey, steps, foods, restrictions, answers, onSubmit, onJump }: {
+  survey: SurveyT; steps: Step[]; foods: FoodItem[]; restrictions: MemberRestriction[]; answers: Map<string, SurveyAnswer>; onSubmit: () => Promise<void>; onJump: (step: number) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const rows = CATEGORIES.map((c, i) => {
-    const safe = foods.filter((f) => f.category === c.id && !isExcluded(f, restrictions));
-    return { c, step: i + 1, total: safe.length, done: safe.filter((f) => answers.has(f.id)).length };
+  const STEPS = steps;
+  const onlyNew = survey.onlyNew ? new Set(survey.onlyNew) : undefined;
+  const rows = steps.flatMap((s, i) => {
+    if (s.kind !== 'category') return [];
+    const safe = foods.filter((f) => f.category === s.cat.id && !isExcluded(f, restrictions));
+    return [{ c: s.cat, step: i, total: safe.length, done: safe.filter((f) => answers.has(f.id)).length }];
   });
   const total = rows.reduce((a, r) => a + r.total, 0);
   const done = rows.reduce((a, r) => a + r.done, 0);
-  const notes = (survey.suggestions ?? []).length + [...answers.values()].filter((a) => a.rating === 'blocked').length;
+  const notes = (survey.suggestions ?? []).length + [...answers.values()].filter((a) => a.rating === 'blocked' && (!onlyNew || onlyNew.has(a.foodItemId))).length;
 
   return (
     <div className="stack" style={{ maxWidth: 720 }}>
       <h1>All done?</h1>
-      <p>You answered <strong>{done} of {total}</strong> foods. Anything you skipped counts as “not sure”, which is fine.</p>
+      <p>You answered <strong>{done} of {total}</strong> {onlyNew ? 'new ' : ''}foods. Anything you skipped counts as “not sure”, which is fine.{onlyNew ? ' Your earlier answers are kept.' : ''}</p>
       <div className="card list">
         {rows.map((r) => (
           <div key={r.c.id} className="spread">

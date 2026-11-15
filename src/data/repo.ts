@@ -1,5 +1,7 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
-import { buildSeedCatalog, CATALOG_VERSION, RETIRED_SEED_IDS } from './seedCatalog';
+import { buildSeedCatalog, CATALOG_VERSION, MERGED_INTO, RETIRED_SEED_IDS, SURVEY_SINCE } from './seedCatalog';
+import { isExcluded } from '../domain/safety';
+import { isSurveyed } from '../domain/surveyScope';
 import { pick, recordChange } from './changes';
 import type {
   Household,
@@ -298,11 +300,37 @@ export async function resetSurvey(memberId: ID, database: PlannerDB = defaultDb)
 }
 
 /** Resume an in-progress survey, or start a new version (admin-permitted). */
-export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = defaultDb): Promise<Survey> {
+/**
+ * Survey questions this person hasn't been asked yet (foods added to the survey since their
+ * last one). Foods hidden from them for safety or dislikes don't count.
+ */
+export async function newSurveyQuestions(memberId: ID, database: PlannerDB = defaultDb): Promise<ID[]> {
+  const latest = await latestSubmittedSurvey(memberId, database);
+  if (!latest) return [];
+  const [answers, foods, restrictions] = await Promise.all([
+    database.answers.where('surveyId').equals(latest.id).toArray(),
+    database.foods.filter((f) => f.active && isSurveyed(f.category)).toArray(),
+    database.restrictions.where('memberId').equals(memberId).filter((r) => r.active).toArray(),
+  ]);
+  const seen = new Set([...answers.map((a) => a.foodItemId), ...(latest.asked ?? [])]);
+  // Foods merged into a generic one count as asked when the old food was.
+  for (const [old, m] of Object.entries(MERGED_INTO)) if (seen.has(old)) seen.add(m.into);
+  // Older surveys didn't record what they asked: only foods added to the survey since then are new.
+  const isNew = (id: ID) => (latest.asked ? !seen.has(id) : !seen.has(id) && (SURVEY_SINCE[id] ?? 0) > latest.catalogVersion);
+  return foods.filter((f) => isNew(f.id) && !isExcluded(f, restrictions)).map((f) => f.id);
+}
+
+/**
+ * Resume an in-progress survey, or start a new version (admin-permitted). With `onlyNew`, the
+ * new version asks only the questions added since the last survey and keeps every other answer.
+ */
+export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = defaultDb, opts: { onlyNew?: boolean } = {}): Promise<Survey> {
   const existing = await inProgressSurvey(memberId, database);
   if (existing) return existing;
   const all = await database.surveys.where('memberId').equals(memberId).toArray();
   const prev = all.sort((a, b) => b.version - a.version)[0];
+  const latest = opts.onlyNew ? await latestSubmittedSurvey(memberId, database) : undefined;
+  const onlyNew = latest ? await newSurveyQuestions(memberId, database) : undefined;
   const ts = now();
   const s: Survey = {
     id: uid(),
@@ -314,9 +342,16 @@ export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = de
     startedAt: ts,
     currentStep: 0,
     updatedAt: ts,
+    ...(latest && onlyNew?.length ? { onlyNew, prepTolerance: latest.prepTolerance } : {}),
   };
-  await database.surveys.add(s);
-  await audit('survey.start', { memberId, surveyId: s.id }, undefined, database);
+  await database.transaction('rw', [database.surveys, database.answers, database.audit], async () => {
+    await database.surveys.add(s);
+    if (s.onlyNew && latest) {
+      const old = await database.answers.where('surveyId').equals(latest.id).toArray();
+      await database.answers.bulkPut(old.map((a) => ({ ...a, id: `${s.id}:${a.foodItemId}`, surveyId: s.id })));
+    }
+    await audit('survey.start', { memberId, surveyId: s.id, ...(s.onlyNew ? { onlyNew: String(s.onlyNew.length) } : {}) }, undefined, database);
+  });
   return s;
 }
 
@@ -330,7 +365,7 @@ export async function saveAnswer(
   surveyId: ID,
   foodItemId: ID,
   rating: RatingCode,
-  extra: Pick<SurveyAnswer, 'onlyPreparedCertainWay' | 'prepNotes' | 'comment' | 'kinds'> = {},
+  extra: Pick<SurveyAnswer, 'onlyPreparedCertainWay' | 'prepNotes' | 'comment' | 'kinds' | 'blockedInfo'> = {},
   database: PlannerDB = defaultDb,
 ) {
   await database.transaction('rw', database.surveys, database.answers, async () => {
@@ -355,9 +390,13 @@ export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb
     // Previous submitted version becomes 'superseded' but is never deleted.
     const others = await database.surveys.where('memberId').equals(s.memberId).toArray();
     for (const o of others) if (o.status === 'submitted') await database.surveys.update(o.id, { status: 'superseded' });
-    await database.surveys.update(surveyId, { status: 'submitted', completedAt: now(), updatedAt: now() });
+    // Record what has been asked so later additions to the survey can be offered on their own.
+    const restrictions = await database.restrictions.where('memberId').equals(s.memberId).filter((r) => r.active).toArray();
+    const asked = (await database.foods.filter((f) => f.active && isSurveyed(f.category)).toArray()).filter((f) => !isExcluded(f, restrictions)).map((f) => f.id);
+    await database.surveys.update(surveyId, { status: 'submitted', completedAt: now(), updatedAt: now(), asked });
     await audit('survey.submit', { memberId: s.memberId, surveyId }, undefined, database);
-    const refusedIds = (await database.answers.where('surveyId').equals(surveyId).toArray()).filter((a) => a.rating === 1).map((a) => a.foodItemId);
+    const onlyNew = s.onlyNew ? new Set(s.onlyNew) : undefined;
+    const refusedIds = (await database.answers.where('surveyId').equals(surveyId).toArray()).filter((a) => a.rating === 1 && (!onlyNew || onlyNew.has(a.foodItemId))).map((a) => a.foodItemId);
     const refused = (await database.foods.bulkGet(refusedIds)).flatMap((f) => (f ? [f.name] : []));
     await recordChange(database, { entity: 'survey', entityId: surveyId, memberId: s.memberId, op: 'submit',
       after: { version: s.version, ...(refused.length ? { refuses: refused } : {}) } });
@@ -397,12 +436,27 @@ async function createSuggestionChanges(s: Survey, database: PlannerDB) {
       after: { type: 'dislike', subject: `food:${text}`, reason: 'From “never stock for me” in survey' } });
   }
 
-  const blockedAnswers = (await database.answers.where('surveyId').equals(s.id).toArray()).filter((a) => a.rating === 'blocked');
+  // "Can't eat it" answers, with the follow-up details (why, what exactly, how careful to be).
+  // Answers copied from an earlier survey were handled then.
+  const onlyNew = s.onlyNew ? new Set(s.onlyNew) : undefined;
+  const blockedAnswers = (await database.answers.where('surveyId').equals(s.id).toArray()).filter((a) => a.rating === 'blocked' && (!onlyNew || onlyNew.has(a.foodItemId)));
   for (const a of blockedAnswers) {
     const food = await database.foods.get(a.foodItemId);
-    if (!food || covered.has(`food:${food.name.toLowerCase()}`)) continue;
-    await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
-      after: { type: 'cannot-eat', subject: `food:${food.name}`, reason: 'Marked "Can’t eat" in survey' } });
+    if (!food) continue;
+    const info = a.blockedInfo ?? {};
+    const cross = info.crossContact;
+    for (const subject of info.subjects?.length ? info.subjects : [`food:${food.name}`]) {
+      if (covered.has(subject.toLowerCase())) continue;
+      covered.add(subject.toLowerCase());
+      await recordChange(database, { ...base, entity: 'restriction', entityId: uid(), op: 'create',
+        after: {
+          type: info.type ?? 'cannot-eat', subject,
+          ...(info.severity ? { severity: info.severity } : {}),
+          ...(info.strictness ? { strictness: info.strictness } : {}),
+          ...(cross ? { cautionCrossContact: cross !== 'fine' } : {}),
+          reason: `Marked “Can’t eat” for ${food.name} in survey${cross === 'unsure' ? '. Not sure about cross-contact, so it’s treated as a concern' : ''}`,
+        } });
+    }
   }
 }
 
