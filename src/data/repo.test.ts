@@ -247,12 +247,10 @@ describe('generic foods with kinds', () => {
     expect(a.ratings['canned-chili']).toBe(4);
     expect(a.kinds!['canned-chili']).toEqual(['vegetarian']);
 
-    // A retake starts with those answers filled in, on the generic foods.
+    // A retake starts fresh (old answers still count until it's submitted).
     const v2 = await startOrResumeSurvey(m.id, db);
-    expect(v2.prefilledFrom).toBe(s.id);
-    const pre = await db.answers.where('surveyId').equals(v2.id).toArray();
-    expect(pre.find((x) => x.foodItemId === 'canned-fruit')).toMatchObject({ rating: 5, kinds: ['peaches', 'pears'] });
-    expect(pre.some((x) => x.foodItemId === 'canned-peaches')).toBe(false);
+    expect(await db.answers.where('surveyId').equals(v2.id).count()).toBe(0);
+    expect((await loadPlanInput('medium', 'limited-cook', null, db))!.members[0].ratings['canned-fruit']).toBe(5);
   });
 
   it('suggests a retake once after the upgrade that added kinds', async () => {

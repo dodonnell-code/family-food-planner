@@ -1,5 +1,5 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
-import { buildSeedCatalog, CATALOG_VERSION, carryOverMerged, RETIRED_SEED_IDS } from './seedCatalog';
+import { buildSeedCatalog, CATALOG_VERSION, RETIRED_SEED_IDS } from './seedCatalog';
 import { pick, recordChange } from './changes';
 import type {
   Household,
@@ -15,7 +15,7 @@ import type {
   SurveyAnswer,
 } from '../domain/types';
 
-const KINDS_REFRESH = 'The survey now asks which kinds of fruit, vegetables, soups and more they like. A retake starts with their earlier answers filled in.';
+const KINDS_REFRESH = 'The survey changed: it now asks which kinds of fruit, vegetables, soups and more they like. Please have them retake it. Their old answers are used until they finish.';
 
 export const DEFAULT_PLANNING = {
   shortDays: 3,
@@ -265,7 +265,6 @@ export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = de
   const ts = now();
   const s: Survey = {
     id: uid(),
-    prefilledFrom: prev && prev.status !== 'in-progress' ? prev.id : undefined,
     memberId,
     catalogVersion: await getCatalogVersion(database),
     status: 'in-progress',
@@ -276,21 +275,6 @@ export async function startOrResumeSurvey(memberId: ID, database: PlannerDB = de
     updatedAt: ts,
   };
   await database.surveys.add(s);
-  // A retake starts from the previous answers (merged foods carried over to their generic food).
-  if (s.prefilledFrom) {
-    const old = await database.answers.where('surveyId').equals(s.prefilledFrom).toArray();
-    const active = new Set((await database.foods.filter((f) => f.active).toArray()).map((f) => f.id));
-    const ratings: Record<ID, RatingCode> = {};
-    const kinds: Record<ID, string[]> = {};
-    for (const a of old) { ratings[a.foodItemId] = a.rating; if (a.kinds?.length) kinds[a.foodItemId] = a.kinds; }
-    carryOverMerged(ratings, kinds, new Set(old.map((a) => a.foodItemId)));
-    const byId = new Map(old.map((a) => [a.foodItemId, a]));
-    await database.answers.bulkPut(Object.entries(ratings).filter(([id]) => active.has(id)).map(([id, rating]) => {
-      const a = byId.get(id);
-      return { id: `${s.id}:${id}`, surveyId: s.id, foodItemId: id, rating, onlyPreparedCertainWay: a?.onlyPreparedCertainWay, prepNotes: a?.prepNotes, comment: a?.comment, kinds: kinds[id] };
-    }));
-    if (prev?.prepTolerance) await database.surveys.update(s.id, { prepTolerance: prev.prepTolerance });
-  }
   await audit('survey.start', { memberId, surveyId: s.id }, undefined, database);
   return s;
 }

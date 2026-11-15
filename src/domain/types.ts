@@ -344,8 +344,6 @@ export interface Survey {
   needsRefresh?: boolean;
   /** Why a retake is suggested (shown to the admin); default: restrictions or membership changed. */
   refreshReason?: string;
-  /** A retake that started with the previous survey's answers filled in. */
-  prefilledFrom?: ID;
   /** Admin override: "Would refuse" answers (food ids) to stop applying until the next survey. */
   ignoredRefusals?: ID[];
   updatedAt: ISODate;

@@ -112,7 +112,7 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
 
       <main className="survey-body" ref={bodyRef}>
         <div className="survey-content">
-        {cur.kind === 'intro' && <Intro name={name} prefilled={!!survey.prefilledFrom} />}
+        {cur.kind === 'intro' && <Intro name={name} />}
         {cur.kind === 'category' && (
           <CategoryStep cat={cur.cat} foods={foods.filter((f) => f.category === cur.cat.id)} restrictions={restrictions} answers={answerMap} surveyId={survey.id} />
         )}
@@ -136,11 +136,10 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
   );
 }
 
-function Intro({ name, prefilled }: { name: string; prefilled: boolean }) {
+function Intro({ name }: { name: string }) {
   return (
     <div className="stack" style={{ maxWidth: 640 }}>
       <h1>Hi {name}! 👋</h1>
-      {prefilled && <p className="notice ok" style={{ margin: 0 }}>Your answers from last time are already filled in. Just check them, change anything that’s different, and pick the <strong>kinds</strong> you like (new questions, like which fruits and soups).</p>}
       <p>We’re planning which foods to keep at home in case of an emergency, like a power cut or a storm. Your answers help us store food <strong>you</strong> will actually want to eat.</p>
       <ul className="stack" style={{ paddingLeft: 20, gap: 6 }}>
         <li>It takes about 10–15 minutes.</li>
