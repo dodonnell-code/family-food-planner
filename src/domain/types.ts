@@ -39,6 +39,8 @@ export interface Household {
     /** Warn this many days before stock reaches its best-by date (default 30). */
     expiryWarningDays?: number;
   };
+  /** Foods the admin has added to a plan by hand (per horizon), even if the planner left them out. */
+  planOverrides?: Partial<Record<Tier, ID[]>>;
 }
 
 // ---------- Members ----------

@@ -55,13 +55,23 @@ export interface PlanInput {
   defaults: PlanningDefaults;
   members: PlanMember[];
   foods: FoodItem[];
+  /** Admin override: always include these foods, even if the planner would leave them out. */
+  include?: ID[];
+}
+
+export interface PlanOverride {
+  foodId: ID;
+  name: string;
+  /** People it isn't safe for (empty when it was only left out by choice). */
+  unsafeFor: ExcludedFood['reasons'];
 }
 
 export interface MemberVerdict {
   memberId: ID;
   rating?: RatingCode;
   /** 'ok' or the strongest thing counting against it for this person. */
-  status: 'ok' | 'dislike' | 'refuse' | 'avoid' | 'minor' | 'prep';
+  /** 'unsafe' only appears on foods an admin added despite this person's allergy or restriction. */
+  status: 'ok' | 'dislike' | 'refuse' | 'avoid' | 'minor' | 'prep' | 'unsafe';
   notes: string[];
 }
 
@@ -142,6 +152,8 @@ export interface PlanResult {
   reserved: ReservedItem[];
   excluded: ExcludedFood[];
   coverage: MemberCoverage[];
+  /** Foods the admin added by hand (missing on plans saved before this existed). */
+  overrides?: PlanOverride[];
   water: { drinkingGallons: number; drinkingDays: number; prepGallons: number; totalGallons: number; fullHorizonGallons: number };
   fuel: { burnerMinutes: number; items: { name: string; minutes: number }[] };
   equipment: EquipmentNeed[];
@@ -218,6 +230,9 @@ function verdictFor(food: FoodItem, m: PlanMember): MemberVerdict & { value: num
   const pc = prepConflict(food, m.prep);
   if (pc) { if (status === 'ok') status = 'prep'; notes.push(pc); }
   if (safety.warnings.length) notes.push(...safety.warnings);
+  // Only reachable through an admin override: this person can't eat it, so their opinion
+  // doesn't count and it never counts as one of their meal options.
+  if (safety.blocked.length || rating === 'blocked') { status = 'unsafe'; value = undefined; notes.unshift(...(safety.blocked.length ? safety.blocked : ['Said they can’t eat it'])); }
   return { memberId: m.id, rating, status, notes, value };
 }
 
@@ -273,6 +288,8 @@ export function buildPlan(input: PlanInput): PlanResult {
   const warnings: string[] = [];
   const foods = input.foods.filter((f) => f.active).sort((a, b) => a.id.localeCompare(b.id));
   const nameOf = (id: ID) => members.find((m) => m.id === id)?.name ?? 'Someone';
+  const forced = new Set(input.include ?? []);
+  const overrides: PlanOverride[] = [];
 
   if (!members.length) warnings.push('No active members, so there is nothing to plan yet.');
   const noSurvey = members.filter((m) => !m.surveyId);
@@ -290,6 +307,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         return { memberId: m.id, reasons: r };
       })
       .filter((x) => x.reasons.length);
+    if (forced.has(f.id)) { overrides.push({ foodId: f.id, name: f.name, unsafeFor: reasons }); eligible.push(f); continue; }
     if (reasons.length) { excluded.push({ foodId: f.id, name: f.name, reasons }); continue; }
     if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) { excluded.push({ foodId: f.id, name: f.name, reasons: [], scenarioOnly: NEEDS_COOKING }); continue; }
     eligible.push(f);
@@ -332,7 +350,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   // ---- 3. Score and choose a varied set ----
   const scored = eligible
     // Cooking oil and similar ingredients aren't meals; rapid-carb treatments are reserved above.
-    .filter((f) => !isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple'))
+    .filter((f) => forced.has(f.id) || (!isMedicalOnly(f) && f.nutrition.caloriesPerServing > 0 && !(f.category === 'fat-snack' && f.mealRole === 'staple')))
     .map((f) => ({ f, ...scoreFood(f, members, tier, days) }));
 
   const dailyCaloriesTotal = members.reduce((s, m) => s + (m.dailyCalories ?? defaults.defaultDailyCalories), 0);
@@ -374,6 +392,13 @@ export function buildPlan(input: PlanInput): PlanResult {
       chosen.push(x);
       return true;
     };
+    // Admin additions go in first, whatever their score.
+    for (const x of pool.filter((y) => forced.has(y.f.id))) {
+      chosen.push(x);
+      forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
+      const k = proteinKind(x.f);
+      if (k) kinds.add(k);
+    }
     while (chosen.length < PICKS[tier][b] && takeNext());
 
     // Calories other groups couldn't place go to grains & staples, the natural calorie base.
@@ -392,7 +417,7 @@ export function buildPlan(input: PlanInput): PlanResult {
     const alloc = new Map<(typeof pool)[number], number>();
     const capFor = (x: (typeof pool)[number]) => {
       const cap = relaxed ? servingCap(x) : Math.min(servingCap(x), Math.max(1, (MAX_ITEM_SHARE[tier] * bucketCalories) / x.f.nutrition.caloriesPerServing));
-      return x.f.form === 'canned' ? Math.min(cap, (alloc.get(x) ?? 0) + cannedBudget.left / x.f.nutrition.caloriesPerServing) : cap;
+      return x.f.form === 'canned' && !forced.has(x.f.id) ? Math.min(cap, (alloc.get(x) ?? 0) + cannedBudget.left / x.f.nutrition.caloriesPerServing) : cap;
     };
     for (let guard = 0; guard < 80 && share > 1 && bucketServingsLeft.n > 0.01; guard++) {
       let open = chosen.filter((x) => (alloc.get(x) ?? 0) < capFor(x) - 1e-9);
@@ -407,7 +432,7 @@ export function buildPlan(input: PlanInput): PlanResult {
         const have = alloc.get(x) ?? 0;
         const add = Math.max(0, Math.min(capFor(x) - have, bucketServingsLeft.n, (share * (x.score || 1)) / sum / x.f.nutrition.caloriesPerServing));
         alloc.set(x, have + add);
-        if (x.f.form === 'canned') cannedBudget.left -= add * x.f.nutrition.caloriesPerServing;
+        if (x.f.form === 'canned' && !forced.has(x.f.id)) cannedBudget.left -= add * x.f.nutrition.caloriesPerServing;
         bucketServingsLeft.n -= add;
         placed += add * x.f.nutrition.caloriesPerServing;
       }
@@ -419,8 +444,9 @@ export function buildPlan(input: PlanInput): PlanResult {
     for (const x of chosen) {
       const f = x.f;
       const raw = alloc.get(x) ?? 0;
-      if (raw <= 0) continue;
-      const servings = Math.max(1, Math.ceil(raw - 1e-9));
+      if (raw <= 0 && !forced.has(f.id)) continue;
+      // Admin additions get at least one package, even when calories are already covered.
+      const servings = Math.max(forced.has(f.id) && raw <= 0 ? f.package.servingsPerPackage : 1, Math.ceil(raw - 1e-9));
       const packages = Math.ceil(servings / f.package.servingsPerPackage);
       const why: string[] = [];
       const rated = x.verdicts.filter((v) => typeof v.rating === 'number' && v.status === 'ok');
@@ -436,6 +462,12 @@ export function buildPlan(input: PlanInput): PlanResult {
         if (v.status === 'dislike' || v.status === 'refuse') flags.push(`${nameOf(v.memberId)} doesn’t like this`);
         if (v.status === 'prep') flags.push(`${nameOf(v.memberId)}: ${v.notes[v.notes.length - 1]}`);
         for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
+      }
+      if (forced.has(f.id)) {
+        why.unshift('Added by admin');
+        const o = overrides.find((y) => y.foodId === f.id);
+        for (const r of o?.unsafeFor ?? []) flags.push(`Not safe for ${nameOf(r.memberId)} (${r.reasons.join(', ')}). Added by admin override: store it apart and labeled.`);
+        if (scenario === 'no-cook' && !NO_HEAT.includes(f.prep.method)) flags.push('Needs heat or cooking, but this is a no-cook plan');
       }
       if (f.shelfLife.unopenedMonthsMax * 30 < days) flags.push(`Keeps up to ${fmtMonths(f.shelfLife.unopenedMonthsMax)}, shorter than this plan: rotate it`);
       items.push({
@@ -517,11 +549,12 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   if (members.length && plannedCalories < targetCalories * 0.95) warnings.push('The plan falls short of everyone’s calorie target. Add more foods to the catalog or relax a preference.');
   if (items.some((i) => i.flags.some((f) => f.includes('avoid when possible')))) warnings.push('Some planned foods conflict with an “avoid when possible” intolerance (flagged below).');
+  if (overrides.some((o) => o.unsafeFor.length)) warnings.push('This plan includes foods an admin added even though they aren’t safe for someone (flagged below). Store them apart and labeled.');
   if (items.length) warnings.push('Catalog entries are generic. Check every product label for allergens before buying.');
 
   return {
     engineVersion: ENGINE_VERSION, tier, scenario, days, people, dailyCaloriesTotal, targetCalories, plannedCalories,
-    items, reserved, excluded, coverage,
+    items, reserved, excluded, coverage, overrides,
     water: { drinkingGallons, drinkingDays, prepGallons, totalGallons: round1(drinkingGallons + prepGallons), fullHorizonGallons },
     fuel: { burnerMinutes, items: fuelItems },
     equipment,

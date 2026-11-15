@@ -3,7 +3,7 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import { pick, recordChange } from './changes';
 import { encryptString } from './crypto';
-import type { CustomFieldDefinition, CustomValue, EncryptedBlob, FoodItem, Household, ID, PrepMethod } from '../domain/types';
+import type { CustomFieldDefinition, CustomValue, EncryptedBlob, FoodItem, Household, ID, PrepMethod, Tier } from '../domain/types';
 
 // ---------------- Food catalog ----------------
 const NO_HEAT: PrepMethod[] = ['ready-to-eat', 'add-cold-water'];
@@ -96,6 +96,20 @@ export async function updateHousehold(patch: Partial<Pick<Household, 'name' | 'p
   await database.households.update(hh.id, patch);
   await audit('household.update', { householdId: hh.id }, keys.join(','), database);
   await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: pick(hh, keys), after: pick(patch, keys) });
+}
+
+/** Admin override: add a food to a horizon's plan (both scenarios) even if the planner left it out, or take it off again. */
+export async function setPlanOverride(tier: Tier, foodId: ID, include: boolean, database: PlannerDB = defaultDb) {
+  const hh = await database.households.toCollection().first();
+  if (!hh) throw new Error('Household not initialized');
+  const before = hh.planOverrides ?? {};
+  const list = new Set(before[tier] ?? []);
+  if (include) list.add(foodId); else list.delete(foodId);
+  const planOverrides = { ...before, [tier]: [...list] };
+  await database.households.update(hh.id, { planOverrides });
+  const food = await database.foods.get(foodId);
+  await audit(include ? 'plan.override.add' : 'plan.override.remove', { foodId }, `${tier}: ${food?.name ?? foodId}`, database);
+  await recordChange(database, { entity: 'household', entityId: hh.id, op: 'update', before: { planOverrides: before }, after: { planOverrides } });
 }
 
 // ---------------- Custom profile fields ----------------

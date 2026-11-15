@@ -27,7 +27,19 @@ export function changeTitle(c: ChangeRecord, l: Lookups): string {
     case 'food.update': return `Food edited: ${foodName}`;
     case 'food.deactivate': return `Food retired: ${foodName}`;
     case 'food.reactivate': return `Food restored: ${foodName}`;
-    case 'household.update': return 'Planning settings changed';
+    case 'household.update': {
+      if (!c.after?.planOverrides) return 'Planning settings changed';
+      const b = (c.before?.planOverrides ?? {}) as Record<string, string[]>;
+      const a = c.after.planOverrides as Record<string, string[]>;
+      for (const t of ['short', 'medium', 'long']) {
+        const nm = (id?: string) => l.foods?.get(id ?? '')?.name ?? 'a food';
+        const added = (a[t] ?? []).find((x) => !(b[t] ?? []).includes(x));
+        const removed = (b[t] ?? []).find((x) => !(a[t] ?? []).includes(x));
+        if (added) return `Admin added ${nm(added)} to the ${t}-term plan`;
+        if (removed) return `Admin removed ${nm(removed)} from the ${t}-term plan`;
+      }
+      return 'Plan additions changed';
+    }
     case 'customField.create': return `Custom field added: ${fieldLabel}`;
     case 'customField.update': return `Custom field changed: ${fieldLabel}`;
     case 'customValue.update': return `${who}: “${fieldLabel}” changed`;
@@ -80,6 +92,7 @@ const LABELS: Record<string, string> = {
   adminNoteEnc: 'Note', active: 'Active', kind: 'Need', confirmed: 'Amount confirmed', detailsEnc: 'Details', labelEnc: 'Condition',
   version: 'Survey version', mergedInto: 'Merged into', reason: 'Reason given', refuses: 'Foods they would refuse',
   ignoredRefusals: 'Survey refusals not applied',
+  'planOverrides.short': 'Added to short-term plan', 'planOverrides.medium': 'Added to medium-term plan', 'planOverrides.long': 'Added to long-term plan',
   name: 'Name', category: 'Category', form: 'Form', examples: 'Examples', tags: 'Tags', priceEstimate: 'Price', relativeCost: 'Relative cost',
   rotationPriority: 'Rotation priority', packagingDurability: 'Packaging durability', safetyNotes: 'Safety notes', equipment: 'Equipment needed', mealRole: 'Meal role', needsReview: 'Needs review',
   'allergens.contains': 'Contains', 'allergens.mayContain': 'May contain', 'allergens.verifyLabel': 'Check label',
@@ -108,7 +121,7 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   if (key === 'subject') return { kind: 'text', text: subjectLabel(String(v)) };
   if (key === 'type') return { kind: 'text', text: RESTRICTION_TYPES.find((t) => t.code === v)?.label ?? String(v) };
   if (key === 'kind') return { kind: 'text', text: needKind(String(v))?.label ?? String(v) };
-  if (key === 'ignoredRefusals' && Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((id) => l.foods?.get(String(id))?.name ?? String(id)).join(', ') : 'none' };
+  if ((key === 'ignoredRefusals' || key.startsWith('planOverrides.')) && Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((id) => l.foods?.get(String(id))?.name ?? String(id)).join(', ') : 'none' };
   if (Array.isArray(v)) return { kind: 'text', text: v.length ? v.map((x) => (key.startsWith('allergens.') ? subjectLabel(String(x)) : String(x))).join(', ') : 'none' };
   if (key === 'mergedInto') return { kind: 'text', text: fname(l.members.get(String(v))) };
   if (key === 'leftAt' || key.endsWith('guestFrom') || key.endsWith('guestUntil')) return { kind: 'text', text: new Date(String(v)).toLocaleDateString() };
@@ -117,7 +130,7 @@ function fmt(key: string, v: unknown, l: Lookups): DisplayValue {
   return { kind: 'text', text: typeof v === 'object' ? JSON.stringify(v) : String(v) };
 }
 
-const NESTED = new Set(['planningProfile', 'params', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'planningDefaults', 'settings']);
+const NESTED = new Set(['planningProfile', 'params', 'allergens', 'prep', 'shelfLife', 'nutrition', 'package', 'planningDefaults', 'settings', 'planOverrides']);
 
 /** Flatten one level for nested objects we know about (planningProfile, params). */
 function flatten(obj: Record<string, unknown> | undefined): Record<string, unknown> {

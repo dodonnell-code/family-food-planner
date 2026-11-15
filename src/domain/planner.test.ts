@@ -197,3 +197,32 @@ describe('planner: long-term plans are mostly freeze-dried and dry food', () => 
       expect(share(plan, 'canned')).toBeGreaterThan(0.3);
   });
 });
+
+describe('planner: admin additions', () => {
+  it('adds a food the planner left out, with at least one package', () => {
+    const plain = buildPlan(input([member('alice'), member('dan')], 'long'));
+    const extra = foods.find((f) => f.active && f.nutrition.caloriesPerServing > 0 && !plain.items.some((i) => i.foodId === f.id) && !plain.excluded.some((e) => e.foodId === f.id))!;
+    const plan = buildPlan(input([member('alice'), member('dan')], 'long', { include: [extra.id] }));
+    const item = plan.items.find((i) => i.foodId === extra.id)!;
+    expect(item.packages).toBeGreaterThanOrEqual(1);
+    expect(item.why[0]).toBe('Added by admin');
+    expect(plan.overrides).toEqual([{ foodId: extra.id, name: extra.name, unsafeFor: [] }]);
+  });
+
+  it('can add an allergy-excluded food back, flagged loudly and never counted as that person’s meal', () => {
+    const alice = member('alice', { restrictions: [restr('alice', 'peanut')] });
+    const plan = buildPlan(input([alice, member('dan')], 'medium', { include: ['peanut-butter'] }));
+    const item = plan.items.find((i) => i.foodId === 'peanut-butter')!;
+    expect(item).toBeDefined();
+    expect(plan.excluded.some((e) => e.foodId === 'peanut-butter')).toBe(false);
+    expect(item.flags.some((f) => f.startsWith('Not safe for alice'))).toBe(true);
+    expect(item.verdicts.find((v) => v.memberId === 'alice')!.status).toBe('unsafe');
+    expect(plan.warnings.some((w) => w.includes('aren’t safe for someone'))).toBe(true);
+    expect(plan.coverage.find((c) => c.memberId === 'alice')!.mealOptionNames).not.toContain(item.name);
+  });
+
+  it('can add cooking oil, which the planner never picks on its own', () => {
+    const plan = buildPlan(input([member('a')], 'long', { include: ['cooking-oil'] }));
+    expect(plan.items.some((i) => i.foodId === 'cooking-oil')).toBe(true);
+  });
+});

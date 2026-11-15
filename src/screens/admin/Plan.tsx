@@ -4,15 +4,16 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { fmtDate } from '../../app/ui';
+import { setPlanOverride } from '../../data/adminRepo';
 import { computePlan, defaultScenario, savePlanSnapshot, savedPlans, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
 import { BUCKET_LABEL, diffPlans, NEEDS_COOKING, TIER_WEIGHTS, type Bucket, type PlanDiffRow, type PlannedItem, type PlanResult } from '../../domain/planner';
-import type { Scenario, Tier } from '../../domain/types';
+import type { FoodItem, Scenario, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
 const SCENARIOS: Scenario[] = ['no-cook', 'limited-cook'];
 const VERDICT: Record<string, { text: string; tone: string }> = {
   ok: { text: 'fine', tone: 'ok' }, dislike: { text: 'doesn’t like', tone: 'warn' }, refuse: { text: 'would refuse', tone: 'warn' },
-  avoid: { text: 'avoid when possible', tone: 'danger' }, minor: { text: 'minor intolerance', tone: '' }, prep: { text: 'prep concern', tone: 'warn' },
+  avoid: { text: 'avoid when possible', tone: 'danger' }, minor: { text: 'minor intolerance', tone: '' }, prep: { text: 'prep concern', tone: 'warn' }, unsafe: { text: 'NOT SAFE for them', tone: 'danger' },
 };
 const num = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
@@ -93,7 +94,8 @@ export default function Plan() {
           {plan.result.reserved.length > 0 && <Reserved r={plan.result} names={names} />}
           <Coverage r={plan.result} />
           <WaterFuel r={plan.result} />
-          <Excluded r={plan.result} names={names} />
+          <Additions r={plan.result} tier={tier} foods={plan.input.foods} names={names} />
+          <Excluded r={plan.result} names={names} tier={tier} />
           <p className="small muted">
             How foods are scored for this horizon (after safety rules): family acceptance {TIER_WEIGHTS[tier].acceptance}%, nutrition {TIER_WEIGHTS[tier].nutrition}%, ease of preparation {TIER_WEIGHTS[tier].prep}%, storage life {TIER_WEIGHTS[tier].storage}%, cost &amp; space {TIER_WEIGHTS[tier].cost}%, convenience {TIER_WEIGHTS[tier].convenience}%.
             {tier === 'long' && ' Long-term plans favor dry staples that keep for years without rotation; canned food fills in.'}
@@ -158,7 +160,7 @@ function ShoppingList({ r, names }: { r: PlanResult; names: Map<string, string> 
   return (
     <section className="card stack">
       <h2 style={{ margin: 0 }}>Group food</h2>
-      <p className="small muted" style={{ margin: 0 }}>Shared meals for everyone. Nothing here conflicts with anyone’s allergies or strict restrictions.</p>
+      <p className="small muted" style={{ margin: 0 }}>Shared meals for everyone. {r.overrides?.some((o) => o.unsafeFor.length) ? 'Nothing here conflicts with anyone’s allergies or strict restrictions, except foods an admin added on purpose (flagged in red).' : 'Nothing here conflicts with anyone’s allergies or strict restrictions.'}</p>
       {buckets.map((b) => (
         <div key={b} className="stack" style={{ gap: 6 }}>
           <h3 style={{ margin: '8px 0 0' }}>{BUCKET_LABEL[b]}</h3>
@@ -295,7 +297,55 @@ function WaterFuel({ r }: { r: PlanResult }) {
   );
 }
 
-function Excluded({ r, names }: { r: PlanResult; names: Map<string, string> }) {
+async function addAnyway(tier: Tier, foodId: string, name: string, unsafe: string) {
+  if (unsafe && !window.confirm(`${name} isn’t safe for ${unsafe}.
+
+Add it to the shared supply anyway? It will be flagged on the plan; store it apart and labeled.`)) return;
+  await setPlanOverride(tier, foodId, true);
+}
+
+function Additions({ r, tier, foods, names }: { r: PlanResult; tier: Tier; foods: FoodItem[]; names: Map<string, string> }) {
+  const [pick, setPick] = useState('');
+  const overrides = r.overrides ?? [];
+  const inPlan = new Set(r.items.map((i) => i.foodId));
+  const choices = foods.filter((f) => f.active && !inPlan.has(f.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const who = (o: NonNullable<PlanResult['overrides']>[number]) => o.unsafeFor.map((x) => names.get(x.memberId) ?? 'someone').join(', ');
+  async function add() {
+    const f = foods.find((x) => x.id === pick);
+    if (!f) return;
+    const ex = r.excluded.find((e) => e.foodId === f.id);
+    await addAnyway(tier, f.id, f.name, ex?.reasons.map((x) => names.get(x.memberId) ?? 'someone').join(', ') ?? '');
+    setPick('');
+  }
+  return (
+    <section className="card stack">
+      <h2 style={{ margin: 0 }}>Admin additions</h2>
+      <p className="small muted" style={{ margin: 0 }}>Add a food to the {TIER_LABEL[tier].toLowerCase()} supply list by hand, even if the planner left it out. It gets at least one package; amounts adjust with the rest of the plan. Applies to both cooking scenarios.</p>
+      {overrides.length > 0 && (
+        <div className="list">
+          {overrides.map((o) => (
+            <div key={o.foodId} className="spread">
+              <div>
+                <strong>{o.name}</strong>
+                {o.unsafeFor.length > 0 && <div className="small" style={{ color: 'var(--danger)' }}>Not safe for {who(o)}</div>}
+              </div>
+              <button onClick={() => setPlanOverride(tier, o.foodId, false)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="row">
+        <select aria-label="Food to add" value={pick} onChange={(e) => setPick(e.target.value)} style={{ maxWidth: 360 }}>
+          <option value="">Choose a food…</option>
+          {choices.map((f) => <option key={f.id} value={f.id}>{f.name}{r.excluded.some((e) => e.foodId === f.id && e.reasons.length) ? ' (left out for someone’s safety)' : ''}</option>)}
+        </select>
+        <button className="primary" disabled={!pick} onClick={add}>Add to plan</button>
+      </div>
+    </section>
+  );
+}
+
+function Excluded({ r, names, tier }: { r: PlanResult; names: Map<string, string>; tier: Tier }) {
   const people = r.excluded.filter((e) => e.reasons.length);
   const scenario = r.excluded.filter((e) => !e.reasons.length);
   return (
@@ -305,9 +355,12 @@ function Excluded({ r, names }: { r: PlanResult; names: Map<string, string> }) {
         <summary>{people.length} food{people.length === 1 ? '' : 's'} not stocked because of someone’s allergy or restriction</summary>
         <div className="list" style={{ marginTop: 8 }}>
           {people.map((e) => (
-            <div key={e.foodId}>
-              <strong>{e.name}</strong>
-              <div className="small muted">{e.reasons.map((x) => `${names.get(x.memberId)}: ${x.reasons.join(', ')}`).join(' · ')}</div>
+            <div key={e.foodId} className="spread">
+              <div>
+                <strong>{e.name}</strong>
+                <div className="small muted">{e.reasons.map((x) => `${names.get(x.memberId)}: ${x.reasons.join(', ')}`).join(' · ')}</div>
+              </div>
+              <button className="ghost small" onClick={() => addAnyway(tier, e.foodId, e.name, e.reasons.map((x) => names.get(x.memberId) ?? 'someone').join(', '))}>Add anyway</button>
             </div>
           ))}
         </div>
@@ -317,7 +370,11 @@ function Excluded({ r, names }: { r: PlanResult; names: Map<string, string> }) {
         return (
           <details key={why}>
             <summary>{list.length} food{list.length === 1 ? '' : 's'} not used in this plan: {why === NEEDS_COOKING ? 'they need heat or cooking' : why || 'scenario'}</summary>
-            <p className="small muted">{list.map((e) => e.name).join(', ')}</p>
+            <div className="list" style={{ marginTop: 8 }}>
+              {list.map((e) => (
+                <div key={e.foodId} className="spread"><span className="small">{e.name}</span><button className="ghost small" onClick={() => addAnyway(tier, e.foodId, e.name, '')}>Add anyway</button></div>
+              ))}
+            </div>
           </details>
         );
       })}

@@ -41,7 +41,7 @@ export async function loadPlanInput(tier: Tier, scenario: Scenario, dek: CryptoK
     });
   }
   const foods = await database.foods.toArray();
-  return { tier, scenario, days, defaults: d, members, foods, sourceSurveyIds };
+  return { tier, scenario, days, defaults: d, members, foods, include: hh.planOverrides?.[tier] ?? [], sourceSurveyIds };
 }
 
 export async function computePlan(tier: Tier, scenario: Scenario, dek: CryptoKey | null, database: PlannerDB = defaultDb) {
