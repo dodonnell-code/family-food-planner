@@ -9,6 +9,16 @@ const VEG = ['vegetarian'];
 const VEGAN = ['vegan', 'vegetarian'];
 
 export const SEED_KINDS: Record<string, FoodKind[]> = {
+  'canned-meat': [
+    k('chicken', 'Chicken', '🍗', { tags: ['poultry', 'high-protein'] }),
+    k('luncheon', 'Luncheon meat (Spam-style)', '🥫', { tags: ['pork', 'high-protein'] }),
+    k('turkey-luncheon', 'Turkey luncheon meat', '🦃', { tags: ['poultry', 'high-protein'] }),
+    k('corned-beef', 'Corned beef', '🥩', { tags: ['beef', 'high-protein'] }),
+    k('corned-beef-hash', 'Corned beef hash', '🥔', { tags: ['beef', 'high-protein'] }),
+    k('vienna', 'Vienna sausages', '🌭', { tags: ['poultry', 'pork', 'beef', 'high-protein'] }),
+    k('ham', 'Ham', '🍖', { tags: ['pork', 'high-protein'] }),
+    k('roast-beef', 'Roast beef with gravy', '🍲', { contains: ['wheat', 'gluten'], tags: ['beef', 'high-protein'] }),
+  ],
   'canned-fruit': [
     k('peaches', 'Peaches', '🍑'), k('pears', 'Pears', '🍐'), k('pineapple', 'Pineapple', '🍍'),
     k('mandarin', 'Mandarin oranges', '🍊'), k('fruit-cocktail', 'Fruit cocktail', '🍒'), k('cherries', 'Cherries', '🍒'),

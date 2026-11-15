@@ -54,11 +54,11 @@ describe('planner: preferences', () => {
   });
 
   it('a dislike pulls a food below a safe alternative instead of being outvoted', () => {
-    const ratings = all5(['tuna', 'chicken-canned']);
+    const ratings = all5(['tuna', 'canned-meat']);
     const fans = ['a', 'b', 'c'].map((id) => member(id, { ratings }));
-    const picky = member('d', { ratings: { 'chicken-canned': 4 }, restrictions: [restr('d', 'food:tuna', { type: 'dislike' })] });
+    const picky = member('d', { ratings: { 'canned-meat': 4 }, restrictions: [restr('d', 'food:tuna', { type: 'dislike' })] });
     const tuna = scoreFood(food('tuna'), [...fans, picky], 'medium', 14).score;
-    const chicken = scoreFood(food('chicken-canned'), [...fans, picky], 'medium', 14).score;
+    const chicken = scoreFood(food('canned-meat'), [...fans, picky], 'medium', 14).score;
     expect(chicken).toBeGreaterThan(tuna);
   });
 

@@ -9,6 +9,7 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v14: canned chicken and luncheon meat merged into canned meats (with kinds).
 // v13: generic foods with kinds (canned fruit, vegetables, soups, chili, beans, tuna, bars); merged items retired.
 // v12: almond butter note: peanut-free option.
 // v11: sunflower seed butter retired; almond butter added.
@@ -18,13 +19,15 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 13;
+export const CATALOG_VERSION = 14;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
-export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice', 'sunbutter', 'fruit-cups', 'canned-peaches', 'canned-pineapple', 'raisins', 'green-beans-canned', 'corn-canned', 'carrots-canned', 'veg-pouch', 'fd-corn-peas', 'soup-rte', 'beef-stew-canned', 'chili-canned', 'veg-chili-canned', 'black-beans-canned', 'chickpeas-canned', 'kidney-beans-canned', 'lentils-canned', 'tuna-canned', 'tuna-pouch', 'granola-bars', 'protein-bars', 'pb-packets'];
+export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice', 'sunbutter', 'fruit-cups', 'canned-peaches', 'canned-pineapple', 'raisins', 'green-beans-canned', 'corn-canned', 'carrots-canned', 'veg-pouch', 'fd-corn-peas', 'soup-rte', 'beef-stew-canned', 'chili-canned', 'veg-chili-canned', 'black-beans-canned', 'chickpeas-canned', 'kidney-beans-canned', 'lentils-canned', 'tuna-canned', 'tuna-pouch', 'granola-bars', 'protein-bars', 'pb-packets', 'chicken-canned', 'spam-canned'];
 
 /** Foods merged into a generic one (v13): survey ratings carry over, and ratings of 4+ become liked kinds. */
 export const MERGED_INTO: Record<string, { into: string; kinds: string[] }> = {
+  'chicken-canned': { into: 'canned-meat', kinds: ['chicken'] },
+  'spam-canned': { into: 'canned-meat', kinds: ['luncheon'] },
   'fruit-cups': { into: 'canned-fruit', kinds: ['mixed-cups'] },
   'canned-peaches': { into: 'canned-fruit', kinds: ['peaches', 'pears'] },
   'canned-pineapple': { into: 'canned-fruit', kinds: ['pineapple'] },
@@ -75,7 +78,7 @@ const CARBS_G: Record<string, number> = {
   'fruit-cups': 18, 'applesauce-pouch': 12, 'canned-peaches': 15, raisins: 31, 'fd-fruit': 12, 'canned-pineapple': 18,
   'green-beans-canned': 4, 'corn-canned': 13, 'carrots-canned': 7, 'tomato-sauce': 8, 'veg-pouch': 8, 'fd-veg': 6,
   'chili-canned': 25, 'veg-chili-canned': 30, 'beef-stew-canned': 18, 'soup-rte': 18, 'ravioli-canned': 33,
-  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'canned-fruit': 18, 'canned-veg': 7, 'canned-soup': 18, 'canned-chili': 26, 'canned-beans': 20, tuna: 0, bars: 26, ramen: 52, nutella: 22, 'butter-powder': 3, 'chocolate-chips': 9, 'cocoa-powder': 3, 'cake-mix': 35, frosting: 21, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
+  'curry-pouch': 25, 'meal-pouch-rte': 35, 'fd-entree': 40, 'potato-flakes': 17, 'canned-meat': 1, 'canned-fruit': 18, 'canned-veg': 7, 'canned-soup': 18, 'canned-chili': 26, 'canned-beans': 20, tuna: 0, bars: 26, ramen: 52, nutella: 22, 'butter-powder': 3, 'chocolate-chips': 9, 'cocoa-powder': 3, 'cake-mix': 35, frosting: 21, salt: 0, 'black-pepper': 0, sugar: 12.5, bouillon: 1, honey: 17, 'garlic-powder': 1, 'onion-powder': 1, 'chili-powder': 1, cumin: 0, 'italian-seasoning': 0, cinnamon: 1, 'soy-sauce': 1, 'hot-sauce': 0, vinegar: 0, 'baking-powder': 1, 'baking-soda': 0, yeast: 2, cornstarch: 7, vanilla: 0.5, 'fd-meal': 40, 'fd-breakfast': 15, 'fd-corn-peas': 15, 'soup-mix-dry': 25, 'mac-cheese-cup': 30,
   'peanut-butter': 7, 'pb-packets': 7, 'almond-butter': 6, 'mixed-nuts': 6, 'trail-mix': 15, 'granola-bars': 29,
   'protein-bars': 22, 'cooking-oil': 0, 'hard-candy': 15, 'glucose-tabs': 16, 'glucose-gel': 15,
   'shelf-milk': 12, 'shelf-plant-milk': 8, 'powdered-milk': 12, 'juice-boxes': 22, 'electrolyte-mix': 10,
@@ -138,11 +141,9 @@ interface Seed {
 
 const S: Seed[] = [
   // ---- Proteins ----
-  { id: 'chicken-canned', name: 'Canned chicken (pull-tab)', category: 'protein', form: 'canned', examples: 'Chunk white chicken', tags: ['high-protein', 'poultry'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '2 oz', kcal: 70, protein: 13, pkg: '12.5 oz can', servings: 6, volL: 0.4, cost: 2, role: 'main' },
   { id: 'salmon-canned', name: 'Canned salmon', category: 'protein', form: 'canned', tags: ['high-protein', 'fish'], contains: ['fish'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '2 oz', kcal: 90, protein: 12, pkg: '14.75 oz can', servings: 7, volL: 0.45, cost: 2, role: 'main' },
   { id: 'sardines-canned', name: 'Canned sardines', category: 'protein', form: 'canned', tags: ['high-protein', 'fish'], contains: ['fish'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1 can', kcal: 190, protein: 22, pkg: '3.75 oz tin', servings: 1, volL: 0.12, cost: 1, role: 'main' },
   { id: 'beef-jerky', name: 'Beef jerky', category: 'protein', form: 'pouch', tags: ['high-protein', 'beef', 'kid-friendly'], contains: ['soy'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 oz', kcal: 80, protein: 11, pkg: '3 oz bag', servings: 3, volL: 0.3, cost: 3, rot: 3, role: 'snack', notes: 'Often contains soy sauce/wheat — verify label' },
-  { id: 'spam-canned', name: 'Canned luncheon meat', category: 'protein', form: 'canned', tags: ['pork', 'high-protein'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '2 oz', kcal: 180, protein: 7, pkg: '12 oz can', servings: 6, volL: 0.35, cost: 2, role: 'main' },
   { id: 'meat-pouch-rte', name: 'Ready-to-eat shelf-stable meat pouch', category: 'protein', form: 'pouch', tags: ['high-protein'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '1 pouch', kcal: 110, protein: 15, pkg: '2.6 oz pouch', servings: 1, volL: 0.1, cost: 2, role: 'main' },
   { id: 'tofu-shelf', name: 'Shelf-stable silken tofu', category: 'protein', form: 'box', tags: ['vegan', 'vegetarian', 'high-protein'], contains: ['soy'], prep: 'ready-to-eat', sl: SRC.pouch, serving: '3 oz', kcal: 50, protein: 5, pkg: '12 oz aseptic box', servings: 4, volL: 0.4, cost: 1, role: 'main', notes: 'Only if labeled shelf-stable; many tofu products need refrigeration' },
   { id: 'fd-meat', name: 'Freeze-dried diced chicken/beef', category: 'protein', form: 'freeze-dried', tags: ['high-protein'], prep: 'add-hot-water', cookMin: 10, batch: 8, water: 0.5, sl: SRC.freezeDried, serving: '1/2 cup', kcal: 90, protein: 16, pkg: '#10 can', servings: 28, volL: 3.5, cost: 3, rot: 1, role: 'main' },
@@ -207,6 +208,7 @@ const S: Seed[] = [
   { id: 'coffee-tea', name: 'Instant coffee / tea', category: 'beverage', form: 'jar', tags: ['vegan', 'comfort'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 1, sl: { ...SRC.shortDry, min: 18, max: 36 }, serving: '1 cup', kcal: 0, pkg: '8 oz jar', servings: 120, volL: 0.4, cost: 2, role: 'drink' },
   { id: 'cocoa-mix', name: 'Hot cocoa mix', category: 'beverage', form: 'packet', tags: ['vegetarian', 'kid-friendly', 'comfort'], contains: ['milk'], mayContain: ['soy'], prep: 'add-hot-water', cookMin: 5, batch: 8, water: 0.75, sl: SRC.shortDry, serving: '1 packet', kcal: 120, pkg: '10-pack', servings: 10, volL: 0.4, cost: 1, rot: 2, role: 'drink' },
   // ---- Generic foods (v13): the survey asks which kinds people like; the shopping list says which to buy ----
+  { id: 'canned-meat', name: 'Canned meats', category: 'protein', form: 'canned', examples: 'Chicken, Spam-style luncheon meat, corned beef, Vienna sausages, ham', tags: ['high-protein'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '2 oz', kcal: 120, protein: 10, pkg: '12 oz can', servings: 6, volL: 0.4, cost: 2, role: 'main', notes: 'All fully cooked: eat cold, or fry slices for a crispy crust. Luncheon meat and corned beef are very salty (about 800 mg sodium per serving); canned chicken is leanest. Pull-tab cans need no can opener. See the shopping list for which kinds to buy and skip.' },
   { id: 'canned-fruit', name: 'Canned fruit', category: 'fruit', form: 'canned', examples: 'Peaches, pears, pineapple, mandarin oranges, fruit cocktail; fruit cups count too', tags: ['vegan', 'vegetarian', 'kid-friendly'], prep: 'ready-to-eat', sl: SRC.cannedHighAcid, serving: '1/2 cup', kcal: 70, protein: 0.5, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, rot: 2, role: 'side', notes: 'Buy the kinds your family picked (see the kinds on the shopping list). Fruit packed in juice has less sugar than syrup. Pull-tab cans and fruit cups need no can opener.' },
   { id: 'canned-veg', name: 'Canned vegetables', category: 'vegetable', form: 'canned', examples: 'Green beans, corn, carrots, peas, mixed vegetables, potatoes', tags: ['vegan', 'vegetarian'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1/2 cup', kcal: 35, protein: 1, pkg: '15 oz can', servings: 3.5, volL: 0.45, cost: 1, role: 'side', notes: 'Buy the kinds your family picked (see the kinds on the shopping list). Low-sodium cans cut the salt; save the liquid for soups.' },
   { id: 'canned-soup', name: 'Canned soups & stews', category: 'meal', form: 'canned', examples: 'Chicken noodle, vegetable, beef stew, minestrone, chowders', tags: ['kid-friendly'], prep: 'ready-to-eat', sl: SRC.cannedLowAcid, serving: '1 cup', kcal: 150, protein: 7, pkg: '18.6 oz can (ready to serve)', servings: 2, volL: 0.55, cost: 1, role: 'main', notes: 'Choose “ready to serve”, not condensed, so no water is needed. Kinds differ in allergens (wheat, milk, shellfish): the shopping list says which kinds to skip for whom. Check every label.' },
@@ -250,6 +252,7 @@ const S: Seed[] = [
  * food, from USDA FoodData Central and common labels. Brands differ: check your label.
  */
 const NUTRITION: Record<string, number[]> = {
+  'canned-meat': [8, 3, 0, 0.5, 550],
   'canned-fruit': [0, 0, 1.5, 15, 10],
   'canned-veg': [0.3, 0, 2, 3, 300],
   'canned-soup': [5, 1.5, 2, 3, 800],
@@ -361,7 +364,7 @@ const NUTRITION: Record<string, number[]> = {
   'vanilla': [0, 0, 0, 0.5, 0, 0],
 };
 /** Foods whose values vary a lot between brands or flavors (assorted meals, bars, cereals). */
-const ROUGH_NUTRITION = new Set(['canned-soup', 'canned-chili', 'bars', 'ramen', 'cake-mix', 'butter-powder', 'cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
+const ROUGH_NUTRITION = new Set(['canned-meat', 'canned-soup', 'canned-chili', 'bars', 'ramen', 'cake-mix', 'butter-powder', 'cereal', 'curry-pouch', 'fd-breakfast', 'fd-entree', 'fd-meal', 'granola', 'granola-bars', 'meal-pouch-rte', 'protein-bars', 'soup-mix-dry', 'soup-rte', 'trail-mix']);
 const NUTRITION_SOURCE = 'Typical values for this kind of food (USDA FoodData Central and common labels). Brands differ; check your label.';
 const ROUGH_SOURCE = 'Rough average across brands and flavors; varies a lot. Enter your product’s label values for accuracy.';
 

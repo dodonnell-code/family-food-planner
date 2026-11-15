@@ -26,8 +26,10 @@ describe('checkFood', () => {
     expect(checkFood(food('white-rice'), [r('gluten')]).blocked).toEqual([]);
   });
   it('applies diets and exclusions', () => {
-    expect(checkFood(food('chicken-canned'), [r('diet:vegetarian', { type: 'special-diet' })]).blocked).toEqual(['Not vegetarian']);
-    expect(checkFood(food('spam-canned'), [r('no:pork', { type: 'religious-ethical' })]).blocked).toEqual(['Contains pork']);
+    expect(checkFood(food('canned-meat'), [r('diet:vegetarian', { type: 'special-diet' })]).blocked).toEqual(['Not vegetarian']);
+    const pork = checkFood(food('canned-meat'), [r('no:pork', { type: 'religious-ethical' })]);
+    expect(pork.blocked).toEqual([]);
+    expect(pork.warnings.join()).toMatch(/skip: Luncheon meat \(Spam-style\), Vienna sausages, Ham/);
     expect(checkFood(food('tuna'), [r('no:fish', { type: 'religious-ethical' })]).blocked).toEqual(['Contains fish']);
   });
   it('matches specific foods by name', () => {
@@ -43,7 +45,7 @@ describe('dislikes', () => {
     const res = checkFood(food('tuna'), [r('food:tuna', { type: 'dislike' })]);
     expect(res.blocked).toEqual([]);
     expect(res.disliked).toEqual(['Doesn’t like tuna']);
-    expect(checkFood(food('chicken-canned'), [r('food:tuna', { type: 'dislike' })]).disliked).toEqual([]);
+    expect(checkFood(food('canned-meat'), [r('food:tuna', { type: 'dislike' })]).disliked).toEqual([]);
   });
 });
 
