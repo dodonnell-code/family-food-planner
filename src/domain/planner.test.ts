@@ -515,3 +515,17 @@ describe('planner: admin control', () => {
     expect(empty.topUp!.suggestions.length).toBeGreaterThan(0);
   });
 });
+
+describe('planner: always stocked', () => {
+  it('peanut butter is in every planner-built plan, even rated low, unless someone is allergic', () => {
+    for (const tier of ['short', 'medium', 'long'] as Tier[])
+      for (const scenario of ['no-cook', 'limited-cook'] as const) {
+        const p = buildPlan(input([member('alice', { ratings: { 'peanut-butter': 2 as RatingCode } }), member('dan')], tier, { scenario }));
+        const pb = p.items.find((i) => i.foodId === 'peanut-butter');
+        expect(pb, `${tier} ${scenario}`).toBeDefined();
+        expect(pb!.why[0]).toBe('Always stocked');
+      }
+    const allergic = buildPlan(input([member('alice', { restrictions: [restr('alice', 'peanut')] })], 'medium'));
+    expect(allergic.items.some((i) => i.foodId === 'peanut-butter')).toBe(false);
+  });
+});

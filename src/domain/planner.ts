@@ -12,7 +12,7 @@ import { checkFood } from './safety';
 import { BASIC_EQUIPMENT, equipmentFor } from './equipment';
 import type { FoodCategory, FoodItem, ID, MemberNeed, MemberRestriction, PlanningDefaults, PrepMethod, PrepTolerance, RatingCode, Scenario, Tier } from './types';
 
-export const ENGINE_VERSION = 'engine-8';
+export const ENGINE_VERSION = 'engine-9';
 export const NEEDS_COOKING = 'Needs heat or cooking';
 export const ADMIN_REMOVED = 'Swapped out or left out by admin';
 /** Default cap on canned food in long-term plans with cooking (% of calories). */
@@ -268,6 +268,9 @@ export const STAPLES: Record<Tier, { label: string; options: ID[] }[]> = {
   ],
 };
 
+/** Foods every planner-built plan includes (when safe for everyone). Peanut butter: the household's must-have. */
+const ALWAYS_STOCKED: ID[] = ['peanut-butter'];
+
 /** Minimum distinct foods per group (variety grows with the length of the plan). */
 const PICKS: Record<Tier, Record<Bucket, number>> = {
   short: { mains: 4, starches: 3, produce: 4, snacks: 2, drinks: 2, pantry: 0 },
@@ -419,6 +422,7 @@ export function buildPlan(input: PlanInput): PlanResult {
   const overrides: PlanOverride[] = [];
   const foodName = (id: ID) => input.foods.find((f) => f.id === id)?.name ?? 'a food';
   const staples = new Set<ID>();
+  const always = new Set<ID>();
   const favorites = new Set<ID>();
   // Food from the smaller plan this one builds on is already counted, so it always stays.
   const carried = new Map((input.base?.items ?? []).map((i) => [i.foodId, i]));
@@ -537,7 +541,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       if (v.status === 'prep') flags.push(`${nameOf(v.memberId)}: ${v.notes[v.notes.length - 1]}`);
       for (const n of v.notes.filter((n) => n.startsWith('May contain'))) flags.push(`${nameOf(v.memberId)}: ${n}`);
     }
-    if (staples.has(f.id) && !forced.has(f.id)) why.unshift('Preparedness staple');
+    if (always.has(f.id) && !forced.has(f.id)) why.unshift('Always stocked');
+    else if (staples.has(f.id) && !forced.has(f.id)) why.unshift('Preparedness staple');
     else if (favorites.has(f.id) && !forced.has(f.id)) why.unshift('Family favorite');
     if (bi && baseInfo) {
       why.unshift(`Includes the ${baseInfo.days}-day supply’s ${bi.packages}`);
@@ -601,6 +606,14 @@ export function buildPlan(input: PlanInput): PlanResult {
       chosen.push(x);
       return true;
     };
+    // Foods the household always stocks (if safe for everyone), whatever their score.
+    for (const id of ALWAYS_STOCKED) {
+      const x = pool.find((y) => y.f.id === id);
+      if (!x || chosen.includes(x)) continue;
+      chosen.push(x);
+      always.add(x.f.id);
+      forms.set(`${x.f.category}:${x.f.form}`, (forms.get(`${x.f.category}:${x.f.form}`) ?? 0) + 1);
+    }
     // Core staples next (rice, beans, potatoes) when cooking is possible and the family is OK with them.
     if (scenario === 'limited-cook') {
       for (const g of STAPLES[tier]) {
