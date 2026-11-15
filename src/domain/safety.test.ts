@@ -12,7 +12,8 @@ describe('checkFood', () => {
   it('blocks direct allergens and "may contain" for allergies', () => {
     expect(checkFood(food('peanut-butter'), [r('peanut')]).blocked).toEqual(['Contains Peanut']);
     expect(checkFood(food('granola-bars'), [r('peanut')]).blocked).toEqual(['May contain Peanut']);
-    expect(checkFood(food('sunbutter'), [r('peanut')]).blocked).toEqual([]);
+    expect(checkFood(food('almond-butter'), [r('peanut')]).blocked).toEqual([]);
+    expect(checkFood(food('almond-butter'), [r('tree-nut')]).blocked.length).toBeGreaterThan(0);
   });
   it('treats gluten as covering wheat', () => {
     expect(checkFood(food('pasta-dry'), [r('gluten', { type: 'intolerance' })]).blocked.length).toBeGreaterThan(0);

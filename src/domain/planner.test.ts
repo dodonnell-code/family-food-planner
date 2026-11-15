@@ -271,7 +271,7 @@ describe('planner: admin swaps', () => {
   it('replaces a food with the admin’s choice in every plan, and can leave one out', () => {
     const chain = { days: { short: 3, medium: 14, long: 90 } };
     const before = buildNestedPlan(input(fam(), 'long'), chain);
-    const target = before.items.find((i) => i.foodId === 'sunbutter') ?? before.items.find((i) => i.bucket === 'snacks')!;
+    const target = before.items.find((i) => i.foodId === 'almond-butter') ?? before.items.find((i) => i.bucket === 'snacks')!;
     const replacement = foods.find((f) => f.active && f.category === 'fat-snack' && !before.items.some((i) => i.foodId === f.id) && f.nutrition.caloriesPerServing > 0 && f.allergens.contains.length === 0)!;
     const subs = { [target.foodId]: replacement.id, 'canned-peaches': '' };
     for (const tier of ['short', 'medium', 'long'] as Tier[]) {
