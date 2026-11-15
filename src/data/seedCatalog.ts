@@ -7,6 +7,7 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v3: per-food equipment; whole wheat berries split from flour (different storage and tools).
 // v4: servings per batch for realistic fuel estimates.
 // v5: more freeze-dried entries (long-term plans can skip canned food).
+// v12: almond butter note: peanut-free option.
 // v11: sunflower seed butter retired; almond butter added.
 // v10: ramen, chocolate hazelnut spread, butter powder, chocolate chips, cocoa powder, cake mix, frosting.
 // v9: full nutrition facts (fat, saturated fat, fiber, sugar, sodium) with their source.
@@ -14,7 +15,7 @@ import type { Allergen, FoodCategory, FoodForm, FoodItem, PrepMethod, Tier } fro
 // v7: boxed mac & cheese replaces the cup (same id keeps survey ratings).
 // v6: specific freeze-dried meals replaced by generic assorted #10 cans (cheaper, more variety),
 //     plus assorted single pouches for the short and medium supplies; instant mashed potatoes.
-export const CATALOG_VERSION = 11;
+export const CATALOG_VERSION = 12;
 
 /** Seed entries no longer offered. Untouched copies are retired on upgrade; admin-edited ones stay. */
 export const RETIRED_SEED_IDS = ['fd-meal-veg', 'fd-chili', 'fd-chicken-rice', 'sunbutter'];
@@ -165,7 +166,7 @@ const S: Seed[] = [
   // ---- Fats / snacks ----
   { id: 'peanut-butter', name: 'Peanut butter', category: 'fat-snack', form: 'jar', tags: ['vegan', 'vegetarian', 'high-protein', 'kid-friendly'], contains: ['peanut'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '2 tbsp', kcal: 190, protein: 7, pkg: '16 oz jar', servings: 14, volL: 0.5, cost: 1, rot: 2, role: 'side' },
   { id: 'pb-packets', name: 'Nut/seed butter single-serve packets', category: 'fat-snack', form: 'packet', tags: ['vegan', 'vegetarian', 'kid-friendly'], contains: ['peanut'], mayContain: ['tree-nut'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '1 packet', kcal: 190, protein: 7, pkg: '10-pack', servings: 10, volL: 0.3, cost: 2, rot: 2, role: 'side' },
-  { id: 'almond-butter', name: 'Almond butter', category: 'fat-snack', form: 'jar', examples: 'No-stir almond butter keeps best at room temperature', tags: ['vegan', 'vegetarian'], contains: ['tree-nut'], prep: 'ready-to-eat', sl: { ...SRC.highFat, assumptions: 'Unopened, no refrigeration needed. Once opened, a few months in a cool pantry; natural (oil-on-top) brands keep longer in the fridge' }, serving: '2 tbsp', kcal: 190, protein: 7, pkg: '16 oz jar', servings: 14, volL: 0.5, cost: 3, rot: 2, role: 'snack', notes: 'Tree nut: not for anyone with a tree-nut allergy. Rotate; nut butters go stale (rancid) faster than most pantry food.' },
+  { id: 'almond-butter', name: 'Almond butter', category: 'fat-snack', form: 'jar', examples: 'No-stir almond butter keeps best at room temperature', tags: ['vegan', 'vegetarian'], contains: ['tree-nut'], prep: 'ready-to-eat', sl: { ...SRC.highFat, assumptions: 'Unopened, no refrigeration needed. Once opened, a few months in a cool pantry; natural (oil-on-top) brands keep longer in the fridge' }, serving: '2 tbsp', kcal: 190, protein: 7, pkg: '16 oz jar', servings: 14, volL: 0.5, cost: 3, rot: 2, role: 'snack', notes: 'Peanut-free option for anyone who can’t have peanuts (almonds are a tree nut, not a peanut). Not for anyone with a tree-nut allergy, and check the label for “may contain peanuts” if the allergy is severe. Rotate; nut butters go stale (rancid) faster than most pantry food.' },
   { id: 'mixed-nuts', name: 'Mixed nuts', category: 'fat-snack', form: 'jar', tags: ['vegan', 'vegetarian', 'high-protein'], contains: ['tree-nut'], mayContain: ['peanut'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '1 oz', kcal: 170, protein: 5, pkg: '16 oz can', servings: 16, volL: 0.6, cost: 2, rot: 2, role: 'snack' },
   { id: 'trail-mix', name: 'Trail mix', category: 'fat-snack', form: 'pouch', tags: ['vegetarian', 'kid-friendly'], contains: ['peanut', 'tree-nut'], mayContain: ['milk', 'soy'], prep: 'ready-to-eat', sl: SRC.highFat, serving: '1/4 cup', kcal: 170, protein: 5, pkg: '26 oz bag', servings: 20, volL: 1, cost: 2, rot: 2, role: 'snack' },
   { id: 'granola-bars', name: 'Granola / cereal bars', category: 'fat-snack', form: 'box', tags: ['vegetarian', 'kid-friendly'], contains: ['wheat', 'gluten'], mayContain: ['peanut', 'tree-nut'], prep: 'ready-to-eat', sl: SRC.shortDry, serving: '1 bar', kcal: 190, protein: 4, pkg: '12-count box', servings: 12, volL: 0.6, cost: 1, rot: 2, role: 'snack' },
