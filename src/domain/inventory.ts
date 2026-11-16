@@ -130,3 +130,26 @@ export function remainingPlan(plan: PlanResult, status: InventoryStatus): PlanRe
     warnings: [],
   };
 }
+
+/**
+ * Which batches to take from when some is used in everyday meals: good stock with the
+ * soonest best-by first, then undated stock, and expired stock only as a last resort
+ * (expired items are normally cleared from "Rotate or replace").
+ * Returns each batch's new quantity (0 = remove it). Throws if there isn't enough.
+ */
+export function planUse(entries: StockEntry[], qty: number, today: string): { id: ID; quantity: number }[] {
+  if (!(qty > 0) || !Number.isFinite(qty)) throw new Error('Enter a quantity more than 0');
+  const total = entries.reduce((t, e) => t + e.quantity, 0);
+  if (qty > total + 1e-9) throw new Error(`Only ${Math.round(total * 10) / 10} on hand`);
+  const rank = (e: StockEntry) => (e.bestBy && e.bestBy < today ? 2 : e.bestBy ? 0 : 1);
+  const ordered = [...entries].sort((a, b) => rank(a) - rank(b) || (a.bestBy ?? '').localeCompare(b.bestBy ?? '') || a.addedAt.localeCompare(b.addedAt));
+  let left = qty;
+  const out: { id: ID; quantity: number }[] = [];
+  for (const e of ordered) {
+    if (left <= 1e-9) break;
+    const take = Math.min(e.quantity, left);
+    left -= take;
+    out.push({ id: e.id, quantity: Math.round((e.quantity - take) * 1000) / 1000 });
+  }
+  return out;
+}

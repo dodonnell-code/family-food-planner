@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSeedCatalog } from '../data/seedCatalog';
 import { DEFAULT_PLANNING } from '../data/repo';
 import { buildPlan, type PlanMember } from './planner';
-import { inventoryStatus, remainingPlan, stockStatus } from './inventory';
+import { inventoryStatus, planUse, remainingPlan, stockStatus } from './inventory';
 import type { StockEntry } from './types';
 
 const foods = buildSeedCatalog();
@@ -51,5 +51,23 @@ describe('inventoryStatus', () => {
     expect(rest.items).toEqual([]);
     expect(rest.reserved.map((r) => r.foodId)).toEqual(['glucose-tabs']);
     expect(rest.equipment.length).toBe(plan.equipment.length);
+  });
+});
+
+describe('planUse', () => {
+  const a = entry({ id: 'late', quantity: 3, bestBy: '2027-06-01', addedAt: '1' });
+  const b = entry({ id: 'soon', quantity: 2, bestBy: '2026-12-01', addedAt: '2' });
+  const c = entry({ id: 'nodate', quantity: 1, addedAt: '3' });
+  const d = entry({ id: 'old', quantity: 4, bestBy: '2026-01-01', addedAt: '4' });
+  it('takes the soonest good batch first, then later ones', () => {
+    expect(planUse([a, b, c, d], 3, TODAY)).toEqual([{ id: 'soon', quantity: 0 }, { id: 'late', quantity: 2 }]);
+  });
+  it('uses undated stock after dated stock, and expired stock last', () => {
+    expect(planUse([a, b, c, d], 7, TODAY)).toEqual([{ id: 'soon', quantity: 0 }, { id: 'late', quantity: 0 }, { id: 'nodate', quantity: 0 }, { id: 'old', quantity: 3 }]);
+  });
+  it('handles partial packages and rejects bad amounts', () => {
+    expect(planUse([b], 0.5, TODAY)).toEqual([{ id: 'soon', quantity: 1.5 }]);
+    expect(() => planUse([b], 3, TODAY)).toThrow('Only 2 on hand');
+    expect(() => planUse([b], 0, TODAY)).toThrow();
   });
 });

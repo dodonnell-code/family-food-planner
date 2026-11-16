@@ -2,6 +2,7 @@
 // review items (Review stays focused on profile and safety changes).
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import type { ID, StockEntry } from '../domain/types';
+import { planUse } from '../domain/inventory';
 
 export async function addStock(input: Omit<StockEntry, 'id' | 'addedAt' | 'updatedAt'>, database: PlannerDB = defaultDb): Promise<StockEntry> {
   if (!(input.quantity > 0) || !Number.isFinite(input.quantity)) throw new Error('Enter a quantity more than 0');
@@ -34,3 +35,15 @@ export async function setEquipmentHave(item: string, have: boolean, database: Pl
 }
 
 export const listStock = (database: PlannerDB = defaultDb) => database.stock.toArray();
+
+/** Some was eaten (or drunk) in everyday meals: take it from the batches that expire soonest. */
+export async function consumeStock(entries: StockEntry[], qty: number, today: string, database: PlannerDB = defaultDb) {
+  const changes = planUse(entries, qty, today);
+  await database.transaction('rw', [database.stock, database.audit], async () => {
+    for (const c of changes) {
+      if (c.quantity <= 0) await database.stock.delete(c.id);
+      else await database.stock.update(c.id, { quantity: c.quantity, updatedAt: now() });
+    }
+    await audit('stock.use', { foodId: entries[0]?.foodId ?? '' }, `${entries[0]?.kind ?? 'food'} -${qty}`, database);
+  });
+}

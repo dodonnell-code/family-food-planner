@@ -5,7 +5,7 @@ import { useSession } from '../../app/session';
 import { fmtDate } from '../../app/ui';
 import { db } from '../../data/db';
 import { computePlan, defaultScenario, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
-import { addStock, removeStock, setEquipmentHave, updateStock } from '../../data/inventoryRepo';
+import { addStock, consumeStock, removeStock, setEquipmentHave, updateStock } from '../../data/inventoryRepo';
 import { EXPIRING_SOON_DAYS, inventoryStatus, stockStatus, type NeedRow } from '../../domain/inventory';
 
 /** Days of warning before best-by (from Settings). */
@@ -124,7 +124,8 @@ export default function Inventory() {
 
 function FoodRow({ r }: { r: NeedRow }) {
   const [open, setOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [mode, setMode] = useState<'add' | 'use' | null>(null);
+  const onHand = r.entries.reduce((t, e) => t + e.quantity, 0);
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="spread">
@@ -138,11 +139,13 @@ function FoodRow({ r }: { r: NeedRow }) {
         </div>
         <div className="row" style={{ gap: 6 }}>
           {r.toBuy > 0 && <strong style={{ fontSize: '1.1rem' }}>Buy {r.toBuy}</strong>}
-          <button onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : r.toBuy > 0 ? 'Bought some' : 'Add'}</button>
+          <button onClick={() => setMode(mode === 'add' ? null : 'add')}>{mode === 'add' ? 'Cancel' : r.toBuy > 0 ? 'Bought some' : 'Add'}</button>
+          {onHand > 0 && <button onClick={() => setMode(mode === 'use' ? null : 'use')}>{mode === 'use' ? 'Cancel' : 'Used some'}</button>}
           {r.entries.length > 0 && <button className="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide' : `Batches (${r.entries.length})`}</button>}
         </div>
       </div>
-      {adding && <AddForm unit="packages" defaultQty={r.toBuy || 1} onAdd={async (q, bestBy) => { await addStock({ kind: 'food', foodId: r.foodId, quantity: q, bestBy }); setAdding(false); }} />}
+      {mode === 'add' && <AddForm unit="packages" defaultQty={r.toBuy || 1} onAdd={async (q, bestBy) => { await addStock({ kind: 'food', foodId: r.foodId, quantity: q, bestBy }); setMode(null); }} />}
+      {mode === 'use' && <UseForm unit="packages" max={onHand} onUse={async (q) => { await consumeStock(r.entries, q, today()); setMode(null); }} />}
       {open && <Entries entries={r.entries} unit="pkg" />}
     </div>
   );
@@ -184,6 +187,21 @@ function AddForm({ unit, defaultQty, onAdd, dateLabel = 'Best-by date (optional)
   );
 }
 
+/** Record food or water used in everyday meals; it comes off the batches that expire soonest. */
+function UseForm({ unit, max, onUse }: { unit: string; max: number; onUse: (qty: number) => Promise<void> }) {
+  const [qty, setQty] = useState('1');
+  const [err, setErr] = useState('');
+  return (
+    <form className="row" style={{ alignItems: 'flex-end', background: 'var(--surface-2)', padding: 12, borderRadius: 12 }}
+      onSubmit={async (e) => { e.preventDefault(); setErr(''); try { await onUse(Number(qty)); } catch (x) { setErr(x instanceof Error ? x.message : String(x)); } }}>
+      <label style={{ maxWidth: 160 }}>How many {unit} used<input type="number" min={0} max={max} step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus /></label>
+      <button className="primary">Take out of inventory</button>
+      <span className="small muted">{num(max)} on hand. Comes off the batch that expires soonest.</span>
+      {err && <span className="small" style={{ color: 'var(--danger)' }}>{err}</span>}
+    </form>
+  );
+}
+
 function AddOther({ foods }: { foods: { id: string; name: string }[] }) {
   const [foodId, setFoodId] = useState('');
   return (
@@ -200,15 +218,20 @@ function AddOther({ foods }: { foods: { id: string; name: string }[] }) {
 }
 
 function Water({ need, entries }: { need: number; entries: StockEntry[] }) {
-  const [adding, setAdding] = useState(false);
+  const [mode, setMode] = useState<'add' | 'use' | null>(null);
+  const onHand = entries.reduce((t, e) => t + e.quantity, 0);
   return (
     <section className="card stack">
       <div className="spread">
         <h2 style={{ margin: 0 }}>Water</h2>
-        <button onClick={() => setAdding(!adding)}>{adding ? 'Cancel' : 'Add water'}</button>
+        <span className="row" style={{ gap: 6 }}>
+          <button onClick={() => setMode(mode === 'add' ? null : 'add')}>{mode === 'add' ? 'Cancel' : 'Add water'}</button>
+          {onHand > 0 && <button onClick={() => setMode(mode === 'use' ? null : 'use')}>{mode === 'use' ? 'Cancel' : 'Used some'}</button>}
+        </span>
       </div>
       <p className="small muted" style={{ margin: 0 }}>This plan needs about {num(need)} gallons (drinking plus preparing food). Store-bought water: use the date on the label. Water you bottle yourself: replace about every 6 months.</p>
-      {adding && <AddForm unit="gallons" defaultQty={Math.max(1, Math.ceil(need))} dateLabel="Replace by (optional)" onAdd={async (q, bestBy) => { await addStock({ kind: 'water', quantity: q, bestBy }); setAdding(false); }} />}
+      {mode === 'add' && <AddForm unit="gallons" defaultQty={Math.max(1, Math.ceil(need))} dateLabel="Replace by (optional)" onAdd={async (q, bestBy) => { await addStock({ kind: 'water', quantity: q, bestBy }); setMode(null); }} />}
+      {mode === 'use' && <UseForm unit="gallons" max={onHand} onUse={async (q) => { await consumeStock(entries, q, today()); setMode(null); }} />}
       {entries.length > 0 && <Entries entries={entries} unit="gal" />}
     </section>
   );
