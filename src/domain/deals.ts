@@ -74,7 +74,7 @@ const EXCLUDE: Record<string, string[]> = {
   'mixed-nuts': ['baby', 'cereal', 'cheerios', 'butter', 'crunch', 'honey nut'], 'canned-chili': ['crisp', 'powder', 'seasoning', 'sauce'],
   honey: ['nut', 'roasted', 'mustard', 'graham', 'dip', 'cereal', 'crunch', 'cheerios', 'oreo', 'maid', 'bbq', 'ham'],
   cinnamon: ['cereal', 'crunch', 'cake', 'roll', 'graham', 'toast', 'wheats', 'bread', 'apple'],
-  jelly: ['belly', 'blox', 'bean'], relish: ['cranberry'], mustard: ['greens', 'collard', 'turnip'], syrup: ['coffee'],
+  jelly: ['belly', 'blox', 'bean', 'cellars', 'wine'], 'oats-instant': ['milk'], 'oats-rolled': ['milk'], relish: ['cranberry'], mustard: ['greens', 'collard', 'turnip'], syrup: ['coffee'],
   'canned-fish': ['smoked', 'steak'], 'canned-veg': ['fries'], salt: ['spray', 'scrub', 'water', 'caramel'], sugar: ['free', 'cookie', 'cereal'],
   'coffee-tea': ['bottle', 'btl', 'frappuccino'],
 };
