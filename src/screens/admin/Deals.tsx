@@ -173,23 +173,45 @@ function loadJson<T>(key: string, fallback: T): T {
   try { return (JSON.parse(load(key) ?? '') as T) ?? fallback; } catch { return fallback; }
 }
 
-/** One line of the shopping list: a food, and the sale picked for it (if any). */
-interface Line { need: Need; sale?: Sale }
+/** One line of the shopping list: a food, a sale picked for it (if any), and other stores it's also picked at. */
+interface Line { need: Need; sale?: Sale; also: string[] }
+
+/** Saved picks: sale ids per food (empty = buy it anywhere). Older versions saved one id or 'none'. */
+function loadPicks(): Record<string, number[]> {
+  const raw = loadJson<Record<string, unknown>>(PICKS_KEY, {});
+  const out: Record<string, number[]> = {};
+  for (const [k, v] of Object.entries(raw ?? {})) {
+    if (Array.isArray(v)) out[k] = v.filter((x): x is number => typeof x === 'number');
+    else if (typeof v === 'number') out[k] = [v];
+    else if (v === 'none') out[k] = [];
+  }
+  return out;
+}
 
 function Found({ needs, results, mine, view, setView, title }: { needs: Need[]; results: Results; mine: boolean; view: View; setView: (v: View) => void; title: string }) {
   const shown = useMemo(() => Object.fromEntries(needs.map((n) => [n.key, (results[n.key] ?? []).filter((s) => !mine || isMyStore(s.store))])), [needs, results, mine]);
   const best = useMemo(() => Object.fromEntries(needs.map((n) => [n.key, bestSale(shown[n.key])])), [needs, shown]);
-  // Picks: which sale to buy each food at ('none' = don't buy it on sale). Default: the best deal,
-  // or the only in-store sale; online-only features (often premium items) are never picked for you.
-  const [picks, setPicks] = useState<Record<string, number | 'none'>>(() => loadJson(PICKS_KEY, {}));
-  const choose = (key: string, id: number | 'none') => setPicks((p) => { const next = { ...p, [key]: id }; save(PICKS_KEY, JSON.stringify(next)); return next; });
-  const chosen = (n: Need): Sale | undefined => {
+  // Picks: which sales to buy each food at (several are fine, e.g. two kinds of soup at two stores).
+  // Default: the best deal, or the first in-store sale; online-only features (often premium items)
+  // are never picked for you. Saved picks from an older week (no longer in the flyers) fall back to the default.
+  const [picks, setPicks] = useState<Record<string, number[]>>(loadPicks);
+  const chosen = (n: Need): Sale[] => {
     const list = shown[n.key];
-    const pick = picks[n.key];
-    if (pick === 'none') return undefined;
-    return list.find((s) => s.id === pick) ?? list.find((s) => s.id === best[n.key]?.id && !onlineOnly(s)) ?? list.find((s) => !onlineOnly(s));
+    const saved = picks[n.key];
+    if (saved && (saved.length === 0 || list.some((s) => saved.includes(s.id)))) return list.filter((s) => saved.includes(s.id));
+    const first = list.find((s) => s.id === best[n.key]?.id && !onlineOnly(s)) ?? list.find((s) => !onlineOnly(s));
+    return first ? [first] : [];
   };
-  const lines: Line[] = needs.map((need) => ({ need, sale: chosen(need) }));
+  const toggle = (n: Need, id: number) => {
+    const ids = chosen(n).map((s) => s.id);
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    setPicks((p) => { const all = { ...p, [n.key]: next }; save(PICKS_KEY, JSON.stringify(all)); return all; });
+  };
+  const lines: Line[] = needs.flatMap((need): Line[] => {
+    const sales = chosen(need);
+    if (!sales.length) return [{ need, also: [] }];
+    return sales.map((sale) => ({ need, sale, also: [...new Set(sales.filter((x) => x.store !== sale.store).map((x) => x.store))] }));
+  });
 
   const withSales = needs.filter((n) => shown[n.key].length);
   const elsewhere = needs.filter((n) => !shown[n.key].length && (results[n.key] ?? []).length).length;
@@ -208,16 +230,18 @@ function Found({ needs, results, mine, view, setView, title }: { needs: Need[]; 
         <div className="notice">No sales found this week{mine ? ' at your stores' : ''}.{mine && elsewhere > 0 && ' Untick “Only your stores” to see other stores nearby.'}</div>
       ) : (
         <section className="card stack">
-          <p className="small muted" style={{ margin: 0 }}><strong>Best price</strong> compares the price per ounce (or per count) when the flyers give sizes. When they don’t, the cheapest is marked <strong>lowest price</strong>, so check the sizes. Tap <strong>Buy here</strong> to put a sale on your shopping list; the best deal is picked to start.</p>
+          <p className="small muted" style={{ margin: 0 }}><strong>Best price</strong> compares the price per ounce (or per count) when the flyers give sizes. When they don’t, the cheapest is marked <strong>lowest price</strong>, so check the sizes. Tap <strong>Add to list</strong> on any sale to put it on your shopping list (as many as you like per food); the best deal is added to start.</p>
           <div className="list">
             {withSales.map((n) => {
-              const pick = chosen(n);
+              const ids = chosen(n).map((s) => s.id);
               return (
                 <div key={n.key} className="stack" style={{ gap: 8 }}>
-                  <div><strong>{n.name}</strong>{n.reserved && <span className="badge" style={{ marginLeft: 6 }}>individual need</span>} <span className="small muted">· {n.need}</span></div>
+                  <div>
+                    <strong>{n.name}</strong>{n.reserved && <span className="badge" style={{ marginLeft: 6 }}>individual need</span>} <span className="small muted">· {n.need}</span>
+                    {ids.length > 1 && <span className="badge ok" style={{ marginLeft: 6 }}>{ids.length} on list</span>}
+                  </div>
                   {shown[n.key].map((s) => (
-                    <SaleRow key={s.id} s={s} best={best[n.key]?.id === s.id ? best[n.key]!.basis : undefined} picked={pick?.id === s.id}
-                      onPick={() => choose(n.key, pick?.id === s.id ? 'none' : s.id)} />
+                    <SaleRow key={s.id} s={s} best={best[n.key]?.id === s.id ? best[n.key]!.basis : undefined} picked={ids.includes(s.id)} onPick={() => toggle(n, s.id)} />
                   ))}
                 </div>
               );
@@ -250,7 +274,7 @@ function SaleRow({ s, best, picked, onPick }: { s: Sale; best?: 'unit' | 'lowest
         <div className="small">{s.product}</div>
         <div className="small muted">{[s.note, s.starts && `Starts ${fmtDay(s.starts)}`, s.through && `Through ${fmtDay(s.through)}`].filter(Boolean).join(' · ')}</div>
       </div>
-      <button className={picked ? 'primary' : ''} style={{ minHeight: 36, padding: '0 12px', flex: 'none' }} aria-pressed={picked} onClick={onPick}>{picked ? '✓ On list' : 'Buy here'}</button>
+      <button className={picked ? 'primary' : ''} style={{ minHeight: 36, padding: '0 12px', flex: 'none' }} aria-pressed={picked} onClick={onPick}>{picked ? '✓ On list' : 'Add to list'}</button>
     </div>
   );
 }
@@ -270,7 +294,7 @@ function ShoppingList({ lines, title }: { lines: Line[]; title: string }) {
 
   const text = [
     title,
-    ...stores.flatMap(([store, ls]) => ['', store.toUpperCase(), ...ls.map((l) => `- ${l.need.name}: ${l.sale!.product} ${l.sale!.price}${l.sale!.through ? ` (through ${fmtDay(l.sale!.through)})` : ''} [${l.need.need}]`)]),
+    ...stores.flatMap(([store, ls]) => ['', store.toUpperCase(), ...ls.map((l) => `- ${l.need.name}: ${l.sale!.product} ${l.sale!.price}${l.sale!.through ? ` (through ${fmtDay(l.sale!.through)})` : ''} [${l.need.need}${l.also.length ? `, also at ${l.also.join(', ')}` : ''}]`)]),
     ...(anywhere.length ? ['', 'NOT ON SALE (ANY STORE)', ...anywhere.map((l) => `- ${l.need.name} [${l.need.need}]`)] : []),
   ].join('\n');
 
@@ -294,6 +318,7 @@ function ShoppingList({ lines, title }: { lines: Line[]; title: string }) {
         <span>
           <strong style={{ textDecoration: checked.includes(key) ? 'line-through' : undefined }}>{l.need.name}</strong> <span className="small muted">· {l.need.need}</span>
           {l.sale && <span className="small" style={{ display: 'block' }}>{l.sale.product} · <strong>{l.sale.price}</strong>{l.sale.through && <span className="muted"> · through {fmtDay(l.sale.through)}</span>}</span>}
+          {l.also.length > 0 && <span className="small muted" style={{ display: 'block' }}>Also on your list at {l.also.join(' and ')}; split the amount between them.</span>}
         </span>
       </label>
     );
