@@ -40,7 +40,7 @@ export default function Inventory() {
     <div className="stack">
       <div className="spread">
         <h1 style={{ margin: 0 }}>Inventory</h1>
-        <Link to={`/admin/reports?tier=${tier}&scenario=${scenario}&stillToBuy=1`} className="small">Print what’s still to buy</Link>
+        <span className="row small" style={{ gap: 12 }}><Link to={`/admin/deals?tier=${tier}&scenario=${scenario}`}>Find deals</Link><Link to={`/admin/reports?tier=${tier}&scenario=${scenario}&stillToBuy=1`}>Print what’s still to buy</Link></span>
       </div>
       <div className="row">
         <span className="small muted">Compare with:</span>

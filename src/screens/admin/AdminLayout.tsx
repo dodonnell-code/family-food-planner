@@ -56,6 +56,7 @@ export default function AdminLayout() {
             <NavLink to="/admin/members">Members</NavLink>
             <NavLink to="/admin/plan">Plan</NavLink>
             <NavLink to="/admin/inventory">Inventory</NavLink>
+            <NavLink to="/admin/deals">Deals</NavLink>
             <NavLink to="/admin/reports">Reports</NavLink>
             <NavLink to="/admin/catalog">Catalog</NavLink>
             <NavLink to="/admin/settings">Settings</NavLink>

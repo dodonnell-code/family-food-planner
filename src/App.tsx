@@ -18,6 +18,7 @@ import Settings from './screens/admin/Settings';
 import Reports from './screens/admin/Reports';
 import Backup from './screens/admin/Backup';
 import Inventory from './screens/admin/Inventory';
+import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
 import Survey from './screens/survey/Survey';
 import UpdatePrompt from './app/UpdatePrompt';
@@ -43,6 +44,7 @@ function Routed() {
         <Route path="catalog/:id" element={<FoodEditor />} />
         <Route path="plan" element={<Plan />} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="deals" element={<Deals />} />
         <Route path="reports" element={<Reports />} />
         <Route path="backup" element={<Backup />} />
         <Route path="settings" element={<Settings />} />
