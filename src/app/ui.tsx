@@ -98,4 +98,8 @@ export function subjectLabel(subject: string): string {
   );
 }
 
-export const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+/** A date-only value ("2026-11-21") is a local calendar day, not midnight UTC (which shows a day early in the US). */
+const toDate = (iso: string) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T00:00` : iso);
+export const fmtDate = (iso?: string) => (iso ? toDate(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+/** "Sat, Nov 21": for dates in the coming days. */
+export const fmtDay = (iso: string) => toDate(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
