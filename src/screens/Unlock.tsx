@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../app/session';
 
 export default function Unlock() {
-  const { hasVault, isAdmin, unlock, recover } = useSession();
+  const { hasVault, isAdmin, remembered, resume, unlock, recover } = useSession();
   const nav = useNavigate();
   const [params] = useSearchParams();
   const next = params.get('next') === 'start' ? '/admin?pick=1' : '/admin';
@@ -55,11 +55,17 @@ export default function Unlock() {
       {mode === 'pass' ? (
         <form className="card stack" style={{ maxWidth: 460, width: '100%' }} onSubmit={submitPass}>
           <h1>Admin</h1>
+          {remembered && (
+            <div className="stack" style={{ gap: 6 }}>
+              <button type="button" className="primary big" onClick={async () => { if (await resume()) nav(next, { replace: true }); }}>Continue to Admin</button>
+              <span className="small muted">This device stays unlocked (turn it off in Settings). Or enter the passphrase:</span>
+            </div>
+          )}
           <label>Passphrase
-            <input type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus />
+            <input type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} autoFocus={!remembered} />
           </label>
           {msg && <div className="notice danger" role="alert">{msg}{waitSec > 0 && ` (${waitSec}s)`}</div>}
-          <button className="primary" disabled={busy || waitSec > 0 || !pass}>{busy ? 'Checking…' : 'Unlock'}</button>
+          <button className={remembered ? '' : 'primary'} disabled={busy || waitSec > 0 || !pass}>{busy ? 'Checking…' : 'Unlock'}</button>
           <div className="spread">
             <Link to="/" className="btn ghost">Back</Link>
             <button type="button" className="ghost small" onClick={() => { setMode('recover'); setMsg(''); }}>Forgot passphrase?</button>

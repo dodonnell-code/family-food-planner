@@ -11,6 +11,11 @@ interface Session {
   hasVault: boolean;
   dek: CryptoKey | null;
   isAdmin: boolean;
+  /** "Stay unlocked on this device" is on: no auto-lock, and no passphrase after a reload. */
+  remembered: boolean;
+  setRemembered(on: boolean): Promise<void>;
+  /** Unlock with the remembered key (after a manual or survey lock). */
+  resume(): Promise<boolean>;
   setup(passphrase: string): Promise<string>; // returns recovery key
   unlock(passphrase: string): Promise<{ ok: true } | { ok: false; waitMs: number }>;
   recover(recoveryKey: string, newPassphrase: string): Promise<boolean>;
@@ -31,6 +36,12 @@ interface AuthState {
 async function getVault(): Promise<KeyVault | undefined> {
   return (await db.meta.get('vault'))?.value as KeyVault | undefined;
 }
+const REMEMBER_KEY = 'rememberedKey';
+/** The data key kept on this device. It's non-extractable (usable, never readable) and not in backups. */
+async function getRemembered(): Promise<CryptoKey | undefined> {
+  return (await db.meta.get(REMEMBER_KEY))?.value as CryptoKey | undefined;
+}
+
 async function getAuthState(): Promise<AuthState> {
   return ((await db.meta.get('authState'))?.value as AuthState) ?? { failures: 0, lastFailAt: 0 };
 }
@@ -39,22 +50,37 @@ export function SessionProvider({ children, autoLockMinutes = 5 }: { children: R
   const [ready, setReady] = useState(false);
   const [hasVault, setHasVault] = useState(false);
   const [dek, setDek] = useState<CryptoKey | null>(null);
+  const [remembered, setRememberedState] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    getVault().then((v) => {
+    Promise.all([getVault(), getRemembered()]).then(([v, key]) => {
       setHasVault(!!v);
+      if (v && key) { setDek(key); setRememberedState(true); }
       setReady(true);
     });
   }, []);
 
   const lock = useCallback(() => setDek(null), []);
-  const adopt = useCallback((key: CryptoKey) => { setHasVault(true); setDek(key); }, []);
-  const reset = useCallback(() => { setDek(null); setHasVault(false); }, []);
+  // Restore and erase clear the device's meta table, so the remembered key is gone too.
+  const adopt = useCallback((key: CryptoKey) => { setHasVault(true); setDek(key); setRememberedState(false); }, []);
+  const reset = useCallback(() => { setDek(null); setHasVault(false); setRememberedState(false); }, []);
+
+  const setRemembered = useCallback(async (on: boolean) => {
+    if (on && dek) await db.meta.put({ key: REMEMBER_KEY, value: dek });
+    else await db.meta.delete(REMEMBER_KEY);
+    setRememberedState(on && !!dek);
+  }, [dek]);
+
+  const resume = useCallback(async () => {
+    const key = await getRemembered();
+    if (key) setDek(key);
+    return !!key;
+  }, []);
 
   // Inactivity auto-lock while admin is unlocked.
   useEffect(() => {
-    if (!dek) return;
+    if (!dek || remembered) return;
     const reset = () => {
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(lock, autoLockMinutes * 60_000);
@@ -69,7 +95,7 @@ export function SessionProvider({ children, autoLockMinutes = 5 }: { children: R
       events.forEach((e) => window.removeEventListener(e, reset));
       document.removeEventListener('visibilitychange', onHide);
     };
-  }, [dek, autoLockMinutes, lock]);
+  }, [dek, remembered, autoLockMinutes, lock]);
 
   const setup = useCallback(async (passphrase: string) => {
     if (await getVault()) throw new Error('Admin passphrase already set');
@@ -113,7 +139,7 @@ export function SessionProvider({ children, autoLockMinutes = 5 }: { children: R
   }, []);
 
   return (
-    <Ctx.Provider value={{ ready, hasVault, dek, isAdmin: !!dek, setup, unlock, recover, lock, adopt, reset }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ ready, hasVault, dek, isAdmin: !!dek, remembered, setRemembered, resume, setup, unlock, recover, lock, adopt, reset }}>{children}</Ctx.Provider>
   );
 }
 

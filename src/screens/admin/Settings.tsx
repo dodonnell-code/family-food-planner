@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { saveFieldDefinition, updateHousehold } from '../../data/adminRepo';
 import type { CustomFieldDefinition, CustomFieldType, Household, PlanningDefaults } from '../../domain/types';
@@ -125,6 +126,7 @@ function PlanningForm({ hh }: { hh: Household }) {
           <label>Remind me to back up every (days)<input type="number" min={1} max={90} value={s.backupReminderDays} onChange={(e) => setS((x) => ({ ...x, backupReminderDays: e.target.value }))} /></label>
         </div>
         <p className="small muted" style={{ margin: 0 }}>A new auto-lock time takes effect the next time the app is opened.</p>
+        <StayUnlocked />
       </section>
 
       {msg && <div className={`notice ${msg.ok ? 'ok' : 'danger'}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</div>}
@@ -205,5 +207,20 @@ function FieldForm({ def, onDone }: { def?: CustomFieldDefinition; onDone: () =>
       {err && <div className="notice danger">{err}</div>}
       <div className="row"><button className="primary">Save field</button><button type="button" className="ghost" onClick={onDone}>Cancel</button></div>
     </form>
+  );
+}
+
+/** Per-device convenience for testing or a trusted device; applies right away, not saved with the household settings. */
+function StayUnlocked() {
+  const { remembered, setRemembered } = useSession();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack" style={{ gap: 6, background: 'var(--surface-2)', padding: 12, borderRadius: 12 }}>
+      <label className="inline" style={{ alignItems: 'flex-start' }}>
+        <input type="checkbox" checked={remembered} disabled={busy} onChange={async (e) => { setBusy(true); try { await setRemembered(e.target.checked); } finally { setBusy(false); } }} />
+        <span><strong>Stay unlocked on this device</strong></span>
+      </label>
+      <span className="small muted">No passphrase when the app opens, and no auto-lock. Handy while testing. Anyone who picks up this device can open Admin and see private information, so turn it off before handing the device to family for surveys. The Lock button and surveys still lock Admin; unlocking then takes one tap.</span>
+    </div>
   );
 }
