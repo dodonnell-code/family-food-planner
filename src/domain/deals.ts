@@ -16,6 +16,8 @@ export interface FlyerItem {
   clean_image_url?: string;
   /** Flipp's top-level category, e.g. "Food, Beverages & Tobacco". */
   _L1?: string;
+  /** Subcategory, e.g. "Emergency Preparedness" (where food buckets are filed). */
+  _L2?: string;
 }
 
 export interface Sale {
@@ -32,7 +34,7 @@ export interface Sale {
 }
 
 /** The family's stores. Sales from other nearby stores can be shown too. */
-export const MY_STORES = ['Meijer', 'Aldi', 'Kroger', 'Walmart'];
+export const MY_STORES = ['Meijer', 'Aldi', 'Kroger', 'Walmart', 'Costco', "Sam's Club"];
 export const isMyStore = (store: string) => MY_STORES.some((s) => store.toLowerCase().includes(s.toLowerCase()));
 
 /**
@@ -40,13 +42,13 @@ export const isMyStore = (store: string) => MY_STORES.some((s) => store.toLowerC
  * Foods not listed here (custom foods) search by their name.
  */
 const FLYER_TERMS: Record<string, string[]> = {
-  'beef-jerky': ['jerky'], 'meat-pouch-rte': ['tuna pouch', 'chicken pouch'], 'tofu-shelf': ['tofu'], 'fd-meat': [], 'egg-powder': [],
+  'beef-jerky': ['jerky'], 'meat-pouch-rte': ['tuna pouch', 'chicken pouch'], 'tofu-shelf': ['tofu'], 'fd-meat': ['freeze dried chicken', 'freeze dried beef'], 'egg-powder': ['powdered eggs'],
   'refried-beans-canned': ['refried beans'], 'lentils-dry': ['lentils'], 'split-peas-dry': ['split peas'], 'pinto-beans-dry': ['pinto beans', 'kidney beans'],
   crackers: ['crackers'], granola: ['granola'], cereal: ['cereal'], 'tortillas-shelf': ['tortillas'], 'rice-pouch-rte': ['ready rice', 'rice pouch'],
   'potato-flakes': ['mashed potatoes', 'instant potatoes'], 'white-rice': ['rice'], 'pasta-dry': ['pasta'], 'oats-instant': ['oatmeal'], 'oats-rolled': ['oats'],
-  cornmeal: ['cornmeal'], 'flour-wheat': ['flour'], 'wheat-berries': [], pretzels: ['pretzels'], 'applesauce-pouch': ['applesauce'], 'fd-fruit': [],
-  'tomato-sauce': ['tomato sauce', 'diced tomatoes'], 'fd-veg': [], 'ravioli-canned': ['ravioli', 'chef boyardee'], 'curry-pouch': ['curry'],
-  'meal-pouch-rte': [], 'fd-entree': [], 'fd-meal': [], 'fd-breakfast': [], 'soup-mix-dry': ['soup mix'], 'mac-cheese-cup': ['mac cheese', 'macaroni'],
+  cornmeal: ['cornmeal'], 'flour-wheat': ['flour'], 'wheat-berries': [], pretzels: ['pretzels'], 'applesauce-pouch': ['applesauce'], 'fd-fruit': ['freeze dried fruit', 'freeze dried strawberries'],
+  'tomato-sauce': ['tomato sauce', 'diced tomatoes'], 'fd-veg': ['freeze dried vegetables'], 'ravioli-canned': ['ravioli', 'chef boyardee'], 'curry-pouch': ['curry'],
+  'meal-pouch-rte': ['mre'], 'fd-entree': ['mountain house', 'emergency food', 'freeze dried meal'], 'fd-meal': ['mountain house', 'emergency food', 'freeze dried meal'], 'fd-breakfast': ['mountain house breakfast', 'freeze dried breakfast'], 'soup-mix-dry': ['soup mix'], 'mac-cheese-cup': ['mac cheese', 'macaroni'],
   'peanut-butter': ['peanut butter'], 'almond-butter': ['almond butter'], 'mixed-nuts': ['nuts'], 'trail-mix': ['trail mix'],
   'cooking-oil': ['vegetable oil', 'canola oil'], 'hard-candy': ['hard candy'], 'glucose-tabs': ['glucose'], 'glucose-gel': ['glucose'],
   'shelf-milk': ['shelf stable milk'], 'shelf-plant-milk': ['almond milk', 'oat milk'], 'powdered-milk': ['dry milk', 'powdered milk'],
@@ -66,7 +68,7 @@ const FLYER_TERMS: Record<string, string[]> = {
 export const WATER_TERMS = ['water'];
 
 /** Never a match: our foods are shelf-stable, and these are freezer, deli or fresh-counter items (or gifts). */
-const EXCLUDE_ALWAYS = ['frozen', 'fresh', 'fillet', 'portions', 'deli', 'refrigerated', 'gift', 'kit', 'cleaning'];
+const EXCLUDE_ALWAYS = ['frozen', 'fresh', 'fillet', 'portion', 'deli', 'refrigerated', 'gift', 'kit', 'cleaning'];
 
 /** Look-alikes for particular foods (e.g. tortilla chips aren't tortillas). */
 const EXCLUDE: Record<string, string[]> = {
@@ -77,6 +79,7 @@ const EXCLUDE: Record<string, string[]> = {
   jelly: ['belly', 'blox', 'bean', 'cellars', 'wine'], 'oats-instant': ['milk'], 'oats-rolled': ['milk'], relish: ['cranberry'], mustard: ['greens', 'collard', 'turnip'], syrup: ['coffee'],
   'canned-fish': ['smoked', 'steak'], 'canned-veg': ['fries'], salt: ['spray', 'scrub', 'water', 'caramel'], sugar: ['free', 'cookie', 'cereal'],
   'coffee-tea': ['bottle', 'btl', 'frappuccino'],
+  'fd-entree': ['breakfast'], 'fd-meal': ['breakfast'], 'fd-fruit': ['treat', 'cat', 'dog'], 'fd-meat': ['treat', 'cat', 'dog'],
 };
 
 /** Stores that aren't food retailers (their flyers sometimes share a word with a food). */
@@ -98,9 +101,9 @@ export function matches(query: string, itemName: string, exclude: string[] = [])
   return words(query).every((w) => has(w.replace(/s$/, ''))) && ![...EXCLUDE_ALWAYS, ...exclude].some(has);
 }
 
-/** Food sold by a food retailer (Flipp's category, when it has one). */
-export const isGrocery = (i: Pick<FlyerItem, '_L1' | 'merchant_name'>) =>
-  (!i._L1 || i._L1 === 'Food, Beverages & Tobacco') && !NON_FOOD_STORES.some((s) => i.merchant_name.toLowerCase().includes(s));
+/** Food (or emergency food, like buckets) sold by a food retailer (Flipp's category, when it has one). */
+export const isGrocery = (i: Pick<FlyerItem, '_L1' | '_L2' | 'merchant_name'>) =>
+  (!i._L1 || i._L1 === 'Food, Beverages & Tobacco' || i._L2 === 'Emergency Preparedness') && !NON_FOOD_STORES.some((s) => i.merchant_name.toLowerCase().includes(s));
 
 const money = (n: number) => `$${n.toFixed(2).replace(/\.00$/, '')}`;
 const clean = (s?: string | null) => (s ?? '').replace(/\bNone\b/g, '').replace(/\s+/g, ' ').trim();

@@ -97,7 +97,13 @@ export default function Deals() {
         }
       }), 4, (done) => setProgress({ done, total: queries.length }));
       const byQuery = new Map(found);
-      setResults(Object.fromEntries(needs.map((n) => [n.key, salesFor(n.terms.map((q) => ({ query: q, items: byQuery.get(q) ?? [] })), { foodId: n.key })])));
+      // Each sale is listed under the first food it matches (one emergency bucket shouldn't show up three times).
+      const listed = new Set<number>();
+      setResults(Object.fromEntries(needs.map((n) => {
+        const sales = salesFor(n.terms.map((q) => ({ query: q, items: byQuery.get(q) ?? [] })), { foodId: n.key }).filter((s) => !listed.has(s.id));
+        sales.forEach((s) => listed.add(s.id));
+        return [n.key, sales];
+      })));
       if (queries.length && failed.length === queries.length) setErr('Couldn’t reach the flyer service. Check the internet connection and try again.');
       else if (failed.length) setErr(`Some searches didn’t go through (${failed.length} of ${queries.length}), so a few sales may be missing. Try “Search again”.`);
     } catch {
@@ -142,7 +148,7 @@ export default function Deals() {
           <button className="primary big" disabled={!validZip(zip) || searching || !needs.length} onClick={() => findSales(!!results)}>
             {searching ? `Searching… ${progress!.done} of ${progress!.total}` : results ? 'Search again' : 'Find sales'}
           </button>
-          <label className="inline"><input type="checkbox" checked={mine} onChange={(e) => { setMine(e.target.checked); save(MINE_KEY, e.target.checked ? null : '0'); }} /> Only {MY_STORES.slice(0, -1).join(', ')} &amp; {MY_STORES[MY_STORES.length - 1]}</label>
+          <label className="inline"><input type="checkbox" checked={mine} onChange={(e) => { setMine(e.target.checked); save(MINE_KEY, e.target.checked ? null : '0'); }} /> Only your stores <span className="small muted">({MY_STORES.join(', ')})</span></label>
         </div>
         {err && <div className="notice danger" role="alert">{err}</div>}
       </section>
@@ -180,7 +186,7 @@ function Found({ needs, results, mine, view, setView }: { needs: Need[]; results
       </div>
 
       {withSales.length === 0 ? (
-        <div className="notice">No sales found this week{mine ? ' at your stores' : ''}.{mine && elsewhere > 0 && ' Untick “Only …” to see other stores nearby.'}</div>
+        <div className="notice">No sales found this week{mine ? ' at your stores' : ''}.{mine && elsewhere > 0 && ' Untick “Only your stores” to see other stores nearby.'}</div>
       ) : view === 'item' ? (
         <section className="card stack">
           <div className="list">
@@ -203,8 +209,8 @@ function Found({ needs, results, mine, view, setView }: { needs: Need[]; results
         <details className="card">
           <summary><strong>Not on sale this week</strong> ({without.length})</summary>
           <p className="small muted">{without.map((n) => n.name).join(' · ')}</p>
-          {mine && elsewhere > 0 && <p className="small muted">{elsewhere} of these {elsewhere === 1 ? 'is' : 'are'} on sale at other stores nearby. Untick “Only …” to see them.</p>}
-          {without.some((n) => !n.terms.length) && <p className="small muted">Freeze-dried and specialty foods rarely show up in store flyers, so they aren’t searched.</p>}
+          {mine && elsewhere > 0 && <p className="small muted">{elsewhere} of these {elsewhere === 1 ? 'is' : 'are'} on sale at other stores nearby. Untick “Only your stores” to see them.</p>}
+          {without.some((n) => !n.terms.length) && <p className="small muted">Some specialty foods (like wheat berries) never show up in store flyers, so they aren’t searched.</p>}
         </details>
       )}
     </>

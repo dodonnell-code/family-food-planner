@@ -8,7 +8,8 @@ const item = (x: Partial<FlyerItem>): FlyerItem => ({ id: n++, name: 'Jif Peanut
 describe('flyer search terms', () => {
   it('uses flyer words for catalog foods, skips freeze-dried, and falls back to the name', () => {
     expect(flyerTerms('canned-fish', 'Canned fish')).toEqual(['tuna', 'salmon', 'sardines']);
-    expect(flyerTerms('fd-entree', 'Freeze-dried entrées, assorted (#10 cans)')).toEqual([]);
+    expect(flyerTerms('wheat-berries', 'Hard wheat berries (whole grain)')).toEqual([]);
+    expect(flyerTerms('fd-meal', 'Freeze-dried meal pouches, assorted')).toContain('mountain house');
     expect(flyerTerms('custom-1', 'Fig bars (soft) / cookies')).toEqual(['fig bars']);
   });
   it('keeps items that contain every search word, plurals allowed', () => {
@@ -44,6 +45,8 @@ describe('salesFor', () => {
     const sales = salesFor([{ query: 'peanut butter', items: [a, b, junk] }, { query: 'peanut butter', items: [b, again] }], { now: NOW });
     expect(sales.map((s) => s.store)).toEqual(['Meijer', 'Family Fare']);
     expect(isMyStore('ALDI')).toBe(true);
+    expect(isMyStore('Costco ')).toBe(true);
+    expect(isMyStore("Sam's Club")).toBe(true);
     expect(isMyStore('Family Fare')).toBe(false);
   });
   it('keeps food from food stores, and drops freezer/fresh items and look-alikes', () => {
@@ -52,6 +55,9 @@ describe('salesFor', () => {
     const fish = [item({ name: 'Fresh Atlantic Salmon Fillets' }), item({ name: 'StarKist Chunk Light Tuna' }), item({ name: 'Curry 3Z shoe', merchant_name: "Dunham's Sports" })];
     expect(salesFor([{ query: 'tuna', items: fish }, { query: 'salmon', items: fish }], { foodId: 'canned-fish', now: NOW }).map((s) => s.product)).toEqual(['StarKist Chunk Light Tuna']);
     expect(salesFor([{ query: 'glucose', items: [item({ name: 'Blood Glucose Meter', _L1: 'Health & Beauty' })] }], { now: NOW })).toEqual([]);
+    const bucket = item({ merchant_name: 'Costco ', name: 'Mountain House Family Faves Emergency Food Bucket, 16 Pouches', _L1: 'Home & Garden', _L2: 'Emergency Preparedness' });
+    expect(salesFor([{ query: 'mountain house', items: [bucket] }], { foodId: 'fd-meal', now: NOW }).map((s) => s.store)).toEqual(['Costco']);
+    expect(salesFor([{ query: 'tuna', items: [item({ name: 'Ahi Tuna Vacuum Packed Portion' })] }], { foodId: 'canned-fish', now: NOW })).toEqual([]);
   });
   it('checks zip codes', () => {
     expect(validZip('49503')).toBe(true);
