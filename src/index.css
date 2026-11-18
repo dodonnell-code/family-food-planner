@@ -110,8 +110,10 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
 
 .recovery-key { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.3rem; letter-spacing: 0.05em; padding: 16px; background: var(--surface-2); border-radius: 10px; text-align: center; word-break: break-all; user-select: all; }
 
+.print-only { display: none; }
 @media print {
   .no-print { display: none !important; }
+  .print-only { display: block !important; }
   body { background: #fff; }
 }
 

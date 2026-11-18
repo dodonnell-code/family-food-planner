@@ -31,6 +31,10 @@ export interface Sale {
   /** First day, when the sale hasn't started yet. */
   starts?: string;
   image?: string;
+  /** Price for one (a "2 for $5" deal is $2.50 each). Missing when the flyer has no price. */
+  each?: number;
+  /** Price per ounce or per count, when the flyer gives one size (approx when it's a range). */
+  perUnit?: { value: number; unit: 'oz' | 'ct'; approx: boolean };
 }
 
 /** The family's stores. Sales from other nearby stores can be shown too. */
@@ -76,7 +80,7 @@ const EXCLUDE: Record<string, string[]> = {
   'mixed-nuts': ['baby', 'cereal', 'cheerios', 'butter', 'crunch', 'honey nut'], 'canned-chili': ['crisp', 'powder', 'seasoning', 'sauce'],
   honey: ['nut', 'roasted', 'mustard', 'graham', 'dip', 'cereal', 'crunch', 'cheerios', 'oreo', 'maid', 'bbq', 'ham'],
   cinnamon: ['cereal', 'crunch', 'cake', 'roll', 'graham', 'toast', 'wheats', 'bread', 'apple'],
-  jelly: ['belly', 'blox', 'bean', 'cellars', 'wine'], 'oats-instant': ['milk'], 'oats-rolled': ['milk'], relish: ['cranberry'], mustard: ['greens', 'collard', 'turnip'], syrup: ['coffee'],
+  jelly: ['belly', 'blox', 'bean', 'cellars', 'wine'], 'oats-instant': ['milk', 'oatmilk'], 'oats-rolled': ['milk', 'oatmilk'], relish: ['cranberry'], mustard: ['greens', 'collard', 'turnip'], syrup: ['coffee'],
   'canned-fish': ['smoked', 'steak'], 'canned-veg': ['fries'], salt: ['spray', 'scrub', 'water', 'caramel'], sugar: ['free', 'cookie', 'cereal'],
   'coffee-tea': ['bottle', 'btl', 'frappuccino'],
   'fd-entree': ['breakfast'], 'fd-meal': ['breakfast'], 'fd-fruit': ['treat', 'cat', 'dog'], 'fd-meat': ['treat', 'cat', 'dog'],
@@ -110,10 +114,10 @@ const clean = (s?: string | null) => (s ?? '').replace(/\bNone\b/g, '').replace(
 
 /** "2/" + 5 → "2 for $5"; "sale" + 5.99 → "$5.99"; "SALE 2 for" + 8 → "2 for $8". */
 export function priceText(i: Pick<FlyerItem, 'current_price' | 'pre_price_text' | 'post_price_text'>): string {
-  const pre = clean(i.pre_price_text).replace(/^sale!?\s*/i, '');
+  const pre = clean(i.pre_price_text).replace(/^(sale!?\s*)?(price)?\s*/i, '');
   const post = clean(i.post_price_text);
   if (i.current_price == null) return [pre, post].filter(Boolean).join(' ') || 'See flyer';
-  const multi = pre.match(/^(\d+)\s*(?:\/|for)$/i);
+  const multi = pre.match(/(?:^|\s)(\d+)\s*(?:\/|for)$/i);
   const lead = multi ? `${multi[1]} for ` : pre ? `${pre} ` : '';
   return `${lead}${money(i.current_price)}${post ? ` ${post}` : ''}`;
 }
@@ -123,6 +127,33 @@ const localDate = (ms: number) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+/** How many the flyer price buys: "2/", "SALE 2 for", "price 3/" → 2, 2, 3; otherwise 1. */
+function multiBuy(pre?: string | null): number {
+  const m = clean(pre).match(/(?:^|\s)(\d+)\s*(?:\/|for)$/i);
+  return m ? Math.max(1, Number(m[1])) : 1;
+}
+
+/**
+ * The package size in a flyer name: "14.5 oz" → 14.5 oz; "12-14 oz." → 12–14 oz; "2 lb" → 32 oz;
+ * "24 ct" → 24 ct. Undefined when there's none, or when a combined ad lists different sizes.
+ */
+export function parseSize(name: string): { min: number; max: number; unit: 'oz' | 'ct' } | undefined {
+  const found: { min: number; max: number; unit: 'oz' | 'ct' }[] = [];
+  const re = /(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?\s*(fl\.?\s*oz|oz|lbs?|ct|count)\b/gi;
+  for (const m of name.matchAll(re)) {
+    const u = m[3].toLowerCase();
+    const k = u.startsWith('lb') ? 16 : 1;
+    const a = Number(m[1]) * k;
+    const b = (m[2] ? Number(m[2]) : Number(m[1])) * k;
+    found.push({ min: Math.min(a, b), max: Math.max(a, b), unit: u === 'ct' || u === 'count' ? 'ct' : 'oz' });
+  }
+  const oz = found.filter((f) => f.unit === 'oz');
+  const pick = oz.length ? oz : found;
+  if (!pick.length) return undefined;
+  const same = pick.every((f) => f.min === pick[0].min && f.max === pick[0].max);
+  return same ? pick[0] : undefined;
+}
 
 export function toSale(i: FlyerItem, now = Date.now()): Sale | undefined {
   if (i.valid_to && Date.parse(i.valid_to) < now) return undefined;
@@ -135,8 +166,43 @@ export function toSale(i: FlyerItem, now = Date.now()): Sale | undefined {
     through: i.valid_to ? localDate(Date.parse(i.valid_to) - 1000) : undefined,
     starts: i.valid_from && Date.parse(i.valid_from) > now ? localDate(Date.parse(i.valid_from)) : undefined,
     image: i.clean_image_url,
+    ...unitPrices(i),
   };
 }
+
+function unitPrices(i: FlyerItem): Pick<Sale, 'each' | 'perUnit'> {
+  if (i.current_price == null || !(i.current_price > 0)) return {};
+  const each = i.current_price / multiBuy(i.pre_price_text);
+  const size = parseSize(i.name);
+  if (!size || !(size.max > 0)) return { each };
+  const mid = (size.min + size.max) / 2;
+  return { each, perUnit: { value: each / mid, unit: size.unit, approx: size.min !== size.max } };
+}
+
+/**
+ * The best deal among one food's sales. "unit": cheapest per ounce (or per count), when at
+ * least two sales give a size in the same unit. "lowest": cheapest each, when sizes can't be
+ * compared (so it says to check sizes). Undefined with fewer than two priced sales.
+ */
+/** Sold only on the store's website (Costco's "Online Price" features), not on the shelf. */
+export const onlineOnly = (s: Sale) => /^online price\b/i.test(s.price);
+
+export function bestSale(sales: Sale[]): { id: number; basis: 'unit' | 'lowest' } | undefined {
+  const priced = sales.filter((s) => s.each !== undefined);
+  if (priced.length < 2) return undefined;
+  for (const unit of ['oz', 'ct'] as const) {
+    const sized = priced.filter((s) => s.perUnit?.unit === unit);
+    if (sized.length >= 2) {
+      const best = sized.reduce((a, b) => (b.perUnit!.value < a.perUnit!.value ? b : a));
+      return { id: best.id, basis: 'unit' };
+    }
+  }
+  const best = priced.reduce((a, b) => (b.each! < a.each! ? b : a));
+  return { id: best.id, basis: 'lowest' };
+}
+
+/** "$0.17/oz" (with "~" for a size range). */
+export const unitText = (u: NonNullable<Sale['perUnit']>) => `${u.approx ? '~' : ''}$${u.value.toFixed(2)}/${u.unit}`;
 
 /**
  * Results of several searches for one food: food items that match and are still on, with
@@ -159,3 +225,64 @@ export function salesFor(results: { query: string; items: FlyerItem[] }[], opts:
 }
 
 export const validZip = (z: string) => /^\d{5}$/.test(z.trim());
+
+// ---- Online brand stores (freeze-dried and emergency food) ----
+
+export interface OnlineStore { id: string; name: string; base: string }
+
+/** Brand stores whose public product list includes sale prices. Mountain House first (the family's go-to). */
+export const ONLINE_STORES: OnlineStore[] = [
+  { id: 'mountain-house', name: 'Mountain House', base: 'https://www.mountainhouse.com' },
+  { id: 'readywise', name: 'ReadyWise', base: 'https://readywise.com' },
+  { id: 'valley', name: 'Valley Food Storage', base: 'https://www.valleyfoodstorage.com' },
+  { id: 'augason', name: 'Augason Farms', base: 'https://www.augasonfarms.com' },
+  { id: 'legacy', name: 'Legacy Food Storage', base: 'https://legacyfoodstorage.com' },
+];
+
+/** A product from a store's public product list (only the fields we use). */
+export interface StoreProduct {
+  title: string;
+  handle: string;
+  product_type?: string;
+  images?: { src: string }[];
+  variants: { id: number; title: string; price: string; compare_at_price?: string | null; available?: boolean }[];
+}
+
+export interface OnlineSale {
+  key: string;
+  product: string;
+  /** Size or pack ("Default Title" dropped). */
+  option?: string;
+  price: number;
+  was: number;
+  pctOff: number;
+  url: string;
+  image?: string;
+}
+
+/** Not food: gear and merch that brand stores also sell. */
+const NOT_FOOD = /\b(gift card|shirt|hat|mug|sticker|stove|spork|utensil|cup|bowl|blanket|backpack|apparel|merch|water filter)\b/i;
+
+/** Marked-down, in-stock variants (at least `minPct` off), biggest discount first. */
+export function onlineSales(products: StoreProduct[], base: string, minPct = 5): OnlineSale[] {
+  const out: OnlineSale[] = [];
+  for (const p of products) {
+    if (!p?.title || !Array.isArray(p.variants) || NOT_FOOD.test(`${p.title} ${p.product_type ?? ''}`)) continue;
+    for (const v of p.variants) {
+      const price = Number(v.price);
+      const was = Number(v.compare_at_price);
+      if (v.available === false || !(price > 0) || !(was > price)) continue;
+      const pctOff = Math.round((1 - price / was) * 100);
+      if (pctOff < minPct) continue;
+      out.push({
+        key: `${p.handle}-${v.id}`,
+        product: p.title.trim(),
+        option: v.title && v.title !== 'Default Title' ? v.title : undefined,
+        price, was, pctOff,
+        url: `${base}/products/${p.handle}?variant=${v.id}`,
+        image: p.images?.[0]?.src,
+      });
+    }
+  }
+  return out.sort((a, b) => b.pctOff - a.pctOff || a.product.localeCompare(b.product));
+}

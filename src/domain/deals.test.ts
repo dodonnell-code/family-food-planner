@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flyerTerms, isMyStore, matches, priceText, salesFor, toSale, validZip, type FlyerItem } from './deals';
+import { bestSale, flyerTerms, isMyStore, matches, onlineSales, parseSize, priceText, salesFor, toSale, validZip, type FlyerItem } from './deals';
 
 const NOW = Date.parse('2026-11-17T15:00:00Z');
 let n = 0;
@@ -28,6 +28,8 @@ describe('prices and dates', () => {
     expect(priceText({ current_price: 5.99, pre_price_text: 'sale', post_price_text: null })).toBe('$5.99');
     expect(priceText({ current_price: 5.79, pre_price_text: null, post_price_text: 'with card' })).toBe('$5.79 with card');
     expect(priceText({ current_price: null, pre_price_text: '10% off', post_price_text: 'None' })).toBe('10% off');
+    expect(priceText({ current_price: 7, pre_price_text: 'price 2/', post_price_text: null })).toBe('2 for $7');
+    expect(priceText({ current_price: 5.99, pre_price_text: 'sale price', post_price_text: null })).toBe('$5.99');
   });
   it('drops ended sales and gives the last day', () => {
     expect(toSale(item({ valid_to: '2026-11-16T04:59:59+00:00' }), NOW)).toBeUndefined();
@@ -62,5 +64,46 @@ describe('salesFor', () => {
   it('checks zip codes', () => {
     expect(validZip('49503')).toBe(true);
     expect(validZip('4950')).toBe(false);
+  });
+});
+
+describe('onlineSales', () => {
+  const p = (title: string, variants: { price: string; compare_at_price?: string | null; available?: boolean; title?: string }[], product_type = 'Food') =>
+    ({ title, handle: title.toLowerCase().replace(/\W+/g, '-'), product_type, variants: variants.map((v, i) => ({ id: i + 1, title: 'Default Title', ...v })) });
+  it('lists in-stock markdowns of at least 5%, biggest first, with a product link', () => {
+    const sales = onlineSales([
+      p('Beef Stew', [{ price: '12.99', compare_at_price: '12.99' }]),
+      p('Classic Bucket', [{ price: '89.99', compare_at_price: '119.99' }]),
+      p('Protein Pack Sampler', [{ price: '559.99', compare_at_price: '565.94' }]),
+      p('Breakfast Skillet', [{ price: '9.99', compare_at_price: '12.99', title: '2-Pack' }, { price: '9.99', compare_at_price: '12.99', available: false }]),
+      p('Camp Stove', [{ price: '20', compare_at_price: '40' }], 'Gear'),
+    ], 'https://www.mountainhouse.com');
+    expect(sales.map((s) => [s.product, s.option, s.pctOff])).toEqual([['Classic Bucket', undefined, 25], ['Breakfast Skillet', '2-Pack', 23]]);
+    expect(sales[0].url).toBe('https://www.mountainhouse.com/products/classic-bucket?variant=1');
+  });
+});
+
+describe('best price', () => {
+  it('reads package sizes from flyer names', () => {
+    expect(parseSize('Del Monte Green Beans 14.5 oz.')).toEqual({ min: 14.5, max: 14.5, unit: 'oz' });
+    expect(parseSize('Minute Rice 12-14 oz. or Success Rice')).toEqual({ min: 12, max: 14, unit: 'oz' });
+    expect(parseSize('Kroger Sugar 4 lb')).toEqual({ min: 64, max: 64, unit: 'oz' });
+    expect(parseSize('Clif Zbar Bars 6 ct./7.6 oz.')).toEqual({ min: 7.6, max: 7.6, unit: 'oz' });
+    expect(parseSize('Chex Cereal 12 oz. or Snyder’s Pretzels 8 oz.')).toBeUndefined();
+    expect(parseSize('Barilla Pasta')).toBeUndefined();
+  });
+  it('works out the price each and per ounce', () => {
+    const s = toSale(item({ name: 'Campbell’s Soup 10.5 oz', current_price: 5, pre_price_text: '3/' }), NOW)!;
+    expect(s.each).toBeCloseTo(1.6667, 3);
+    expect(s.perUnit!.value).toBeCloseTo(0.1587, 3);
+  });
+  it('picks the cheapest per ounce when sizes compare, otherwise the lowest price (check sizes)', () => {
+    const big = toSale(item({ name: 'Aldi Mashed Potatoes 13.75 oz', current_price: 1.85, pre_price_text: null }), NOW)!;
+    const small = toSale(item({ name: 'Idahoan Mashed Potatoes 4 oz', current_price: 0.99, pre_price_text: null }), NOW)!;
+    expect(bestSale([small, big])).toEqual({ id: big.id, basis: 'unit' });
+    const a = toSale(item({ name: 'Barilla Pasta', current_price: 4, pre_price_text: '3/' }), NOW)!;
+    const b = toSale(item({ name: 'Kroger Pasta', current_price: 0.99, pre_price_text: null }), NOW)!;
+    expect(bestSale([a, b])).toEqual({ id: b.id, basis: 'lowest' });
+    expect(bestSale([a])).toBeUndefined();
   });
 });
