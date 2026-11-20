@@ -43,23 +43,27 @@ export interface InventoryStatus {
 
 export function inventoryStatus(plan: PlanResult, stock: StockEntry[], foods: FoodItem[], today: string, warnDays = EXPIRING_SOON_DAYS): InventoryStatus {
   const foodName = (id?: ID) => foods.find((f) => f.id === id)?.name ?? 'Unknown food';
-  const need = new Map<ID, { name: string; packageDesc: string; need: number; calories: number; reserved: boolean }>();
-  for (const i of plan.items) need.set(i.foodId, { name: i.name, packageDesc: i.packageDesc, need: i.packages, calories: i.calories, reserved: false });
+  // `need` is whole packages (what the plan lists); `exact` is the servings actually needed, in
+  // packages, so stock bought in other sizes (e.g. 3.8 canisters) can still cover a need of 4.
+  const spp = (id: ID) => foods.find((f) => f.id === id)?.package.servingsPerPackage ?? 0;
+  const exactOf = (id: ID, packages: number, servings?: number) => (servings && spp(id) ? Math.min(packages, servings / spp(id)) : packages);
+  const need = new Map<ID, { name: string; packageDesc: string; need: number; exact: number; calories: number; reserved: boolean }>();
+  for (const i of plan.items) need.set(i.foodId, { name: i.name, packageDesc: i.packageDesc, need: i.packages, exact: exactOf(i.foodId, i.packages, i.servings), calories: i.calories, reserved: false });
   for (const r of plan.reserved) {
     if (!r.foodId || !r.packages) continue;
     const cur = need.get(r.foodId);
-    need.set(r.foodId, { name: r.foodName ?? foodName(r.foodId), packageDesc: r.packageDesc ?? '', need: (cur?.need ?? 0) + r.packages, calories: cur?.calories ?? 0, reserved: true });
+    need.set(r.foodId, { name: r.foodName ?? foodName(r.foodId), packageDesc: r.packageDesc ?? '', need: (cur?.need ?? 0) + r.packages, exact: (cur?.exact ?? 0) + exactOf(r.foodId, r.packages, r.servings), calories: cur?.calories ?? 0, reserved: true });
   }
 
   const foodStock = stock.filter((e) => e.kind === 'food' && e.foodId);
   const byFood = new Map<ID, StockEntry[]>();
   for (const e of foodStock) byFood.set(e.foodId!, [...(byFood.get(e.foodId!) ?? []), e]);
 
-  const row = (foodId: ID, n: { name: string; packageDesc: string; need: number; reserved: boolean }): NeedRow => {
+  const row = (foodId: ID, n: { name: string; packageDesc: string; need: number; exact?: number; reserved: boolean }): NeedRow => {
     const entries = (byFood.get(foodId) ?? []).sort((a, b) => (a.bestBy ?? '9999').localeCompare(b.bestBy ?? '9999'));
     const sum = (s: StockStatus[]) => entries.filter((e) => s.includes(stockStatus(e, today, warnDays))).reduce((t, e) => t + e.quantity, 0);
     const have = sum(['ok', 'expiring']);
-    return { foodId, name: n.name, packageDesc: n.packageDesc, need: n.need, have, expired: sum(['expired']), expiring: sum(['expiring']), toBuy: Math.max(0, Math.ceil(n.need - have)), reserved: n.reserved, entries };
+    return { foodId, name: n.name, packageDesc: n.packageDesc, need: n.need, have, expired: sum(['expired']), expiring: sum(['expiring']), toBuy: Math.max(0, Math.ceil((n.exact ?? n.need) - have - 1e-6)), reserved: n.reserved, entries };
   };
 
   const rows = [...need].map(([id, n]) => row(id, n));
@@ -69,7 +73,7 @@ export function inventoryStatus(plan: PlanResult, stock: StockEntry[], foods: Fo
   }).sort((a, b) => a.name.localeCompare(b.name));
 
   // Calories covered: for each planned food, the fraction on hand (capped at what's needed).
-  const coveredCalories = rows.reduce((t, r) => t + (need.get(r.foodId)!.calories * Math.min(1, r.need ? r.have / r.need : 0)), 0);
+  const coveredCalories = rows.reduce((t, r) => { const n = need.get(r.foodId)!; return t + n.calories * Math.min(1, n.exact ? r.have / n.exact : 0); }, 0);
 
   const waterEntries = stock.filter((e) => e.kind === 'water');
   const haveGallons = waterEntries.filter((e) => stockStatus(e, today, warnDays) !== 'expired').reduce((t, e) => t + e.quantity, 0);

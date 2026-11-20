@@ -71,3 +71,19 @@ describe('planUse', () => {
     expect(() => planUse([b], 0, TODAY)).toThrow();
   });
 });
+
+describe('stock in other sizes', () => {
+  it('counts fractional packages by the servings the plan really needs', () => {
+    // A plan item that rounds up: e.g. needs 2.2 packages' worth of servings → lists 3.
+    const it0 = plan.items.find((i) => {
+      const spp = foods.find((f) => f.id === i.foodId)!.package.servingsPerPackage;
+      return i.servings / spp < i.packages - 0.3;
+    })!;
+    const spp = foods.find((f) => f.id === it0.foodId)!.package.servingsPerPackage;
+    const exact = it0.servings / spp;
+    const enough = inventoryStatus(plan, [entry({ foodId: it0.foodId, quantity: Math.round((exact + 0.05) * 1000) / 1000 })], foods, TODAY);
+    expect(enough.rows.find((r) => r.foodId === it0.foodId)!.toBuy).toBe(0);
+    const short = inventoryStatus(plan, [entry({ foodId: it0.foodId, quantity: Math.max(0, exact - 1.2) })], foods, TODAY);
+    expect(short.rows.find((r) => r.foodId === it0.foodId)!.toBuy).toBe(2);
+  });
+});

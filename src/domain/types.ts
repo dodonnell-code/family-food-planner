@@ -1,3 +1,4 @@
+import type { SizeUnit } from './packageSize';
 import type { NeedDomain } from './needs';
 
 // Domain model — mirrors scope §9. All keys are immutable IDs, never names.
@@ -423,8 +424,10 @@ export interface StockEntry {
   foodId?: ID;
   /** For kind 'equipment': the equipment name as the plan lists it. */
   item?: string;
-  /** Packages (food), gallons (water) or count (equipment). */
+  /** Packages (food), gallons (water) or count (equipment). Food can be a fraction of a package. */
   quantity: number;
+  /** What was actually bought when it wasn't the plan's package size (e.g. 1 × 160 oz box), for display. */
+  bought?: { count: number; size: number; unit: SizeUnit };
   bestBy?: ISODate;
   note?: string;
   addedAt: ISODate;

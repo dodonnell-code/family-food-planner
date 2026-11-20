@@ -7,6 +7,7 @@ import { db } from '../../data/db';
 import { computePlan, defaultScenario, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
 import { addStock, consumeStock, removeStock, setEquipmentHave, updateStock } from '../../data/inventoryRepo';
 import { EXPIRING_SOON_DAYS, inventoryStatus, stockStatus, type NeedRow } from '../../domain/inventory';
+import { packagesPer, parsePackageSize, SIZE_UNITS, unitLabel, type SizeUnit } from '../../domain/packageSize';
 
 /** Days of warning before best-by (from Settings). */
 const WarnDays = createContext(EXPIRING_SOON_DAYS);
@@ -17,6 +18,9 @@ const SCENARIOS: Scenario[] = ['no-cook', 'limited-cook'];
 const num = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const today = () => new Date().toISOString().slice(0, 10);
 const STATUS_BADGE = { ok: { t: '', c: 'ok' }, expiring: { t: 'use soon', c: 'warn' }, expired: { t: 'expired', c: 'danger' } } as const;
+
+/** Catalog foods by id, for package details in the add form. */
+const Foods = createContext<Map<string, FoodItem>>(new Map());
 
 export default function Inventory() {
   const { dek } = useSession();
@@ -31,12 +35,14 @@ export default function Inventory() {
   const warnDays = hh?.settings.expiryWarningDays ?? EXPIRING_SOON_DAYS;
   const status = useMemo(() => (plan && stock && foods ? inventoryStatus(plan.result, stock, foods, today(), warnDays) : undefined), [plan, stock, foods, warnDays]);
   const [showStocked, setShowStocked] = useState(false);
+  const foodMap = useMemo(() => new Map((foods ?? []).map((f) => [f.id, f])), [foods]);
 
   const toBuy = status?.rows.filter((r) => r.toBuy > 0) ?? [];
   const stocked = status?.rows.filter((r) => r.toBuy === 0) ?? [];
 
   return (
     <WarnDays.Provider value={warnDays}>
+    <Foods.Provider value={foodMap}>
     <div className="stack">
       <div className="spread">
         <h1 style={{ margin: 0 }}>Inventory</h1>
@@ -59,7 +65,7 @@ export default function Inventory() {
           <Stages stock={stock!} foods={foods!} warnDays={warnDays} dek={dek} />
           <div className="stats">
             <div className="card stat"><span className="small muted">Calories on hand</span><strong>{Math.round((status.totals.coveredCalories / Math.max(1, status.totals.plannedCalories)) * 100)}%</strong><span className="small muted">of the {plan.result.days}-day plan</span></div>
-            <div className="card stat"><span className="small muted">Packages</span><strong>{status.totals.havePackages} / {status.totals.needPackages}</strong><span className="small muted">on hand / needed</span></div>
+            <div className="card stat"><span className="small muted">Packages</span><strong>{num(status.totals.havePackages)} / {num(status.totals.needPackages)}</strong><span className="small muted">on hand / needed</span></div>
             <div className="card stat"><span className="small muted">Still to buy</span><strong>{status.totals.toBuyPackages}</strong><span className="small muted">packages, {toBuy.length} foods</span></div>
             <div className="card stat"><span className="small muted">Water</span><strong>{num(status.water.haveGallons)} / {num(status.water.needGallons)} gal</strong><span className="small muted">{status.water.toBuyGallons > 0 ? `${num(status.water.toBuyGallons)} gal to go` : 'covered'}</span></div>
           </div>
@@ -118,6 +124,7 @@ export default function Inventory() {
         </>
       )}
     </div>
+    </Foods.Provider>
     </WarnDays.Provider>
   );
 }
@@ -144,7 +151,7 @@ function FoodRow({ r }: { r: NeedRow }) {
           {r.entries.length > 0 && <button className="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide' : `Batches (${r.entries.length})`}</button>}
         </div>
       </div>
-      {mode === 'add' && <AddForm unit="packages" defaultQty={r.toBuy || 1} onAdd={async (q, bestBy) => { await addStock({ kind: 'food', foodId: r.foodId, quantity: q, bestBy }); setMode(null); }} />}
+      {mode === 'add' && <FoodAddForm foodId={r.foodId} defaultQty={r.toBuy || 1} onDone={() => setMode(null)} />}
       {mode === 'use' && <UseForm unit="packages" max={onHand} onUse={async (q) => { await consumeStock(r.entries, q, today()); setMode(null); }} />}
       {open && <Entries entries={r.entries} unit="pkg" />}
     </div>
@@ -159,7 +166,7 @@ function Entries({ entries, unit }: { entries: StockEntry[]; unit: string }) {
         const s = stockStatus(e, today(), warnDays);
         return (
           <div key={e.id} className="spread small">
-            <span>{num(e.quantity)} {unit} · {e.bestBy ? `best by ${fmtDate(e.bestBy)}` : 'no date'} · added {fmtDate(e.addedAt)} {s !== 'ok' && <span className={`badge ${STATUS_BADGE[s].c}`}>{STATUS_BADGE[s].t}</span>}</span>
+            <span>{num(e.quantity)} {unit}{e.bought && <span className="muted"> (bought as {e.bought.count} × {num(e.bought.size)} {unitLabel(e.bought.unit)})</span>} · {e.bestBy ? `best by ${fmtDate(e.bestBy)}` : 'no date'} · added {fmtDate(e.addedAt)} {s !== 'ok' && <span className={`badge ${STATUS_BADGE[s].c}`}>{STATUS_BADGE[s].t}</span>}</span>
             <span className="row" style={{ gap: 4 }}>
               <button aria-label="One fewer" style={{ minHeight: 36, padding: '0 12px' }} onClick={() => updateStock(e.id, { quantity: Math.max(0, e.quantity - 1) })}>−</button>
               <button aria-label="One more" style={{ minHeight: 36, padding: '0 12px' }} onClick={() => updateStock(e.id, { quantity: e.quantity + 1 })}>+</button>
@@ -212,7 +219,7 @@ function AddOther({ foods }: { foods: { id: string; name: string }[] }) {
           {foods.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
       </label>
-      {foodId && <AddForm key={foodId} unit="packages" defaultQty={1} onAdd={async (q, bestBy) => { await addStock({ kind: 'food', foodId, quantity: q, bestBy }); setFoodId(''); }} />}
+      {foodId && <FoodAddForm key={foodId} foodId={foodId} defaultQty={1} onDone={() => setFoodId('')} />}
     </div>
   );
 }
@@ -258,5 +265,70 @@ function Stages({ stock, foods, warnDays, dek }: { stock: StockEntry[]; foods: F
         );
       })}
     </section>
+  );
+}
+
+/**
+ * Add food that was bought. Usually the plan's package ("42 oz canister"); or a different size
+ * (e.g. 1 × 160 oz box), which is converted into plan packages (3.8 canisters).
+ */
+function FoodAddForm({ foodId, defaultQty, onDone }: { foodId: string; defaultQty: number; onDone: () => void }) {
+  const food = useContext(Foods).get(foodId);
+  const pkgDesc = food?.package.description ?? 'package';
+  const parsed = useMemo(() => parsePackageSize(pkgDesc), [pkgDesc]);
+  const [other, setOther] = useState(false);
+  const [qty, setQty] = useState(String(defaultQty));
+  const [size, setSize] = useState('');
+  const [unit, setUnit] = useState<SizeUnit>(parsed && parsed.unit !== 'count' ? parsed.unit : parsed ? 'count' : 'servings');
+  const [bestBy, setBestBy] = useState('');
+  const [err, setErr] = useState('');
+
+  const count = Number(qty);
+  const conv = other && size ? packagesPer({ amount: Number(size), unit }, pkgDesc, food?.package.servingsPerPackage ?? 0) : undefined;
+  const total = conv && 'packages' in conv && count > 0 ? conv.packages * count : undefined;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr('');
+    try {
+      if (!other) {
+        await addStock({ kind: 'food', foodId, quantity: count, bestBy: bestBy || undefined });
+      } else {
+        if (!conv) throw new Error('Enter the size of each one you bought.');
+        if ('error' in conv) throw new Error(conv.error);
+        if (!(count > 0)) throw new Error('Enter how many you bought.');
+        await addStock({ kind: 'food', foodId, quantity: Math.round(total! * 1000) / 1000, bestBy: bestBy || undefined, bought: { count, size: Number(size), unit } });
+      }
+      onDone();
+    } catch (x) { setErr(x instanceof Error ? x.message : String(x)); }
+  }
+
+  return (
+    <form className="stack" style={{ gap: 10, background: 'var(--surface-2)', padding: 12, borderRadius: 12 }} onSubmit={submit}>
+      <div className="row" role="radiogroup" aria-label="Package size" style={{ gap: 6 }}>
+        <button type="button" role="radio" aria-checked={!other} className={!other ? 'primary' : ''} onClick={() => setOther(false)}>{pkgDesc}</button>
+        <button type="button" role="radio" aria-checked={other} className={other ? 'primary' : ''} onClick={() => setOther(true)}>Different size</button>
+      </div>
+      <div className="row" style={{ alignItems: 'flex-end' }}>
+        <label style={{ maxWidth: 140 }}>How many{other ? '' : ` (${pkgDesc})`}<input type="number" min={0} step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus /></label>
+        {other && (
+          <>
+            <label style={{ maxWidth: 140 }}>Size of each<input type="number" min={0} step="any" inputMode="decimal" value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. 160" /></label>
+            <label style={{ maxWidth: 240 }}>Unit
+              <select value={unit} onChange={(e) => setUnit(e.target.value as SizeUnit)}>
+                {SIZE_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+              </select>
+            </label>
+          </>
+        )}
+        <label style={{ maxWidth: 220 }}>Best-by date (optional)<input type="date" value={bestBy} onChange={(e) => setBestBy(e.target.value)} /></label>
+      </div>
+      {other && conv && 'error' in conv && <span className="small" style={{ color: 'var(--danger)' }}>{conv.error}</span>}
+      {other && total !== undefined && (
+        <span className="small"><strong>= {num(total)} × {pkgDesc}</strong>{food?.package.servingsPerPackage ? ` (about ${Math.round(total * food.package.servingsPerPackage)} servings)` : ''}</span>
+      )}
+      <div><button className="primary">Add to inventory</button></div>
+      {err && <span className="small" style={{ color: 'var(--danger)' }}>{err}</span>}
+    </form>
   );
 }
