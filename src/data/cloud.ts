@@ -8,13 +8,25 @@
 import Dexie from 'dexie';
 import dexieCloud from 'dexie-cloud-addon';
 import { db, type PlannerDB } from './db';
-import { unlockWithPassphrase, unlockWithRecovery, type KeyVault } from './crypto';
+import { sha256Hex, unlockWithPassphrase, unlockWithRecovery, type KeyVault } from './crypto';
 import { ensureInitialized } from './repo';
 import { CloudDB, clearLocalForJoin, syncPass, SyncKeyError } from './sync';
 
 /** Set at build time (see README › Sync). Without it the app works exactly as before, on one device. */
 export const CLOUD_URL = (import.meta.env.VITE_DEXIE_CLOUD_URL as string | undefined)?.trim() || undefined;
 export const syncAvailable = !!CLOUD_URL;
+
+/**
+ * Which emails may turn on sync in this copy of the app, as fingerprints (so the household's address
+ * isn't readable in the published code). Set at build time as VITE_SYNC_EMAIL_HASHES, comma-separated;
+ * make one with `node scripts/sync-email-hash.mjs you@example.com`. Empty: any email (not recommended
+ * for a public site, since strangers would use up the sync account's storage).
+ */
+const ALLOWED = ((import.meta.env.VITE_SYNC_EMAIL_HASHES as string | undefined) ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+export const emailHash = async (email: string) => sha256Hex(`ffp-sync:${email.trim().toLowerCase()}`);
+export async function emailAllowed(email: string): Promise<boolean> {
+  return !ALLOWED.length || ALLOWED.includes(await emailHash(email));
+}
 
 const SYNC_KEY = 'syncKey';
 
@@ -129,6 +141,7 @@ export function syncNow() {
  * then download what's there. Returns the family's wrapped key if another device already set it up.
  */
 export async function signIn(email: string): Promise<{ vault?: KeyVault }> {
+  if (!(await emailAllowed(email))) throw new Error('Sync in this copy of the app is only for its own household’s email. Check the address, or use the app without sync.');
   const c = cloud();
   const user = c.cloud.currentUser.value;
   if (!user.isLoggedIn || user.email?.toLowerCase() !== email.trim().toLowerCase()) {

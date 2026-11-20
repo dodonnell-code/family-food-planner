@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -25,6 +25,8 @@ export default function AdminLayout() {
   const attentionCount = useLiveQuery(async () => (await computeAttention()).length, []);
   const [ask, setAsk] = useState<Ask | null>(null);
   const { pathname } = useLocation();
+  // Set by the Lock button, so locking goes to the welcome screen instead of the passphrase screen.
+  const locking = useRef(false);
   // On phones the menu is one sideways-scrolling row: keep the current page's tab in view.
   useEffect(() => { document.querySelector('.topbar nav a.active')?.scrollIntoView({ block: 'nearest', inline: 'center' }); }, [pathname]);
 
@@ -48,7 +50,7 @@ export default function AdminLayout() {
     await go(memberId);
   }
 
-  if (!isAdmin) return <Navigate to="/unlock" replace />;
+  if (!isAdmin) return locking.current ? null : <Navigate to="/unlock" replace />;
 
   return (
     <StartSurvey.Provider value={start}>
@@ -66,7 +68,7 @@ export default function AdminLayout() {
             <NavLink to="/admin/backup">Backup</NavLink>
             <NavLink to="/admin/review">Review{attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
           </nav>
-          <button className="ghost" onClick={() => { lock(); nav('/welcome', { replace: true }); }}>Lock</button>
+          <button className="ghost" onClick={() => { locking.current = true; nav('/welcome', { replace: true }); lock(); }}>Lock</button>
         </div>
       </header>
       <main className="page">

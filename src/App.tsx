@@ -22,13 +22,20 @@ import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
 import LinkDevice from './screens/LinkDevice';
 import { initSync } from './data/cloud';
+import { getDeviceOwner } from './data/device';
+import { useLiveQuery } from 'dexie-react-hooks';
 import Survey from './screens/survey/Survey';
 import UpdatePrompt from './app/UpdatePrompt';
 
-/** The app opens on Inventory (unlocking Admin first if needed); new devices start at the welcome screen. */
+/**
+ * The app opens on Inventory (unlocking Admin first if needed). New devices, and a family member's
+ * personal device (Settings › Whose device is this?), start at the welcome screen.
+ */
 function Start() {
   const { hasVault } = useSession();
-  return <Navigate to={hasVault ? '/admin/inventory' : '/welcome'} replace />;
+  const owner = useLiveQuery(async () => (await getDeviceOwner()) ?? null, []);
+  if (owner === undefined) return null;
+  return <Navigate to={hasVault && !owner ? '/admin/inventory' : '/welcome'} replace />;
 }
 
 function Routed() {

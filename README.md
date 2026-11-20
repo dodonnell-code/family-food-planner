@@ -53,6 +53,9 @@ so surveys taken on any device show up everywhere.
 - **Other devices:** on the welcome screen choose *Link to another device* (or, on a device that's
   already set up, use the same card in Backup). Sign in, then enter the Admin passphrase or the
   recovery key. Linking **replaces** that device's data with the family's.
+- **A family member's own phone:** link it, then in Admin › Settings set *Whose device is this?* to
+  that person. The app then opens on their survey, and they can take or retake it without the Admin
+  passphrase. Everything else still needs it. The setting is per device and never synced.
 - *Stop syncing on this device* keeps its data but stops sharing. Restoring a backup or erasing a
   device also unlinks it.
 
@@ -66,7 +69,11 @@ so surveys taken on any device show up everywhere.
 3. Give the build the URL: `gh variable set DEXIE_CLOUD_URL --body https://<id>.dexie.cloud`
    (for local development, put `VITE_DEXIE_CLOUD_URL=https://<id>.dexie.cloud` in `.env.local`).
    Without it the app works as before, on one device, and the sync card is hidden.
-4. Dexie Cloud's free plan includes 3 production users and 25 MB, plenty for one household
+4. Allow only the household email: `node scripts/sync-email-hash.mjs you@example.com` prints a
+   fingerprint; `gh variable set SYNC_EMAIL_HASHES --body <fingerprint>` (comma-separate several).
+   The app then refuses other emails, so strangers using the public site can't use up the sync
+   account. For a server-side lock as well, see *Policy for new users* in the Dexie Cloud manager.
+5. Dexie Cloud's free plan includes 3 production users and 25 MB, plenty for one household
    login. New users start as 30-day evaluation users; make the household user a production user in
    the Dexie Cloud manager before that runs out, or syncing stops (the app keeps working offline).
 

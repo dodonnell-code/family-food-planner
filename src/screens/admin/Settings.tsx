@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { saveFieldDefinition, updateHousehold } from '../../data/adminRepo';
+import { getDeviceOwner, setDeviceOwner } from '../../data/device';
 import type { CustomFieldDefinition, CustomFieldType, Household, PlanningDefaults } from '../../domain/types';
 
 export default function Settings() {
@@ -127,6 +128,7 @@ function PlanningForm({ hh }: { hh: Household }) {
         </div>
         <p className="small muted" style={{ margin: 0 }}>A new auto-lock time takes effect the next time the app is opened.</p>
         <StayUnlocked />
+        <DeviceOwner />
       </section>
 
       {msg && <div className={`notice ${msg.ok ? 'ok' : 'danger'}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</div>}
@@ -221,6 +223,24 @@ function StayUnlocked() {
         <span><strong>Stay unlocked on this device</strong></span>
       </label>
       <span className="small muted">No passphrase when the app opens, and no auto-lock. Handy while testing. Anyone who picks up this device can open Admin and see private information, so turn it off before handing the device to family for surveys. The Lock button and surveys still lock Admin; unlocking then takes one tap.</span>
+    </div>
+  );
+}
+
+/** Per-device: a family member's own phone or tablet opens on their survey, without the Admin passphrase. */
+function DeviceOwner() {
+  const members = useLiveQuery(() => db.members.where('status').equals('active').toArray(), []);
+  const owner = useLiveQuery(async () => (await getDeviceOwner())?.id ?? '', []);
+  if (!members || owner === undefined) return null;
+  return (
+    <div className="stack" style={{ gap: 6, background: 'var(--surface-2)', padding: 12, borderRadius: 12 }}>
+      <label>Whose device is this?
+        <select value={owner} onChange={(e) => setDeviceOwner(e.target.value || undefined)} style={{ maxWidth: 320 }}>
+          <option value="">Shared device</option>
+          {members.map((m) => <option key={m.id} value={m.id}>{m.preferredName || m.displayName}’s own device</option>)}
+        </select>
+      </label>
+      <span className="small muted">On a shared device, an adult picks who takes a survey. On someone’s own device, the app opens on their survey and they can take or retake it without the Admin passphrase. Only their own survey. Everything else still needs the passphrase. Applies to this device only and takes effect right away.</span>
     </div>
   );
 }
