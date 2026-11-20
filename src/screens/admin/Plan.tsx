@@ -178,35 +178,47 @@ function DiffView({ rows, when, count }: { rows: PlanDiffRow[]; when: string; co
 
 function ShoppingList({ r, names, foods }: { r: PlanResult; names: Map<string, string>; foods: FoodItem[] }) {
   const buckets = (Object.keys(BUCKET_LABEL) as Bucket[]).filter((b) => r.items.some((i) => i.bucket === b));
+  // Expand / collapse all: rows remount with the new starting state.
+  const [all, setAll] = useState({ open: false, v: 0 });
   return (
     <section className="card stack">
-      <h2 style={{ margin: 0 }}>Group food</h2>
+      <div className="spread">
+        <h2 style={{ margin: 0 }}>Group food</h2>
+        <button className="ghost small" onClick={() => setAll((a) => ({ open: !a.open, v: a.v + 1 }))}>{all.open ? 'Collapse all' : 'Expand all'}</button>
+      </div>
       <p className="small muted" style={{ margin: 0 }}>Shared meals for everyone. {r.overrides?.some((o) => o.unsafeFor.length) ? 'Nothing here conflicts with anyone’s allergies or strict restrictions, except foods an admin added on purpose (flagged in red).' : 'Nothing here conflicts with anyone’s allergies or strict restrictions.'}</p>
       {buckets.map((b) => (
         <div key={b} className="stack" style={{ gap: 6 }}>
           <h3 style={{ margin: '8px 0 0' }}>{BUCKET_LABEL[b]}</h3>
-          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={i.foodId} i={i} names={names} r={r} foods={foods} tier={r.tier} />)}</div>
+          <div className="list">{r.items.filter((i) => i.bucket === b).map((i) => <ItemRow key={`${i.foodId}:${all.v}`} startOpen={all.open} i={i} names={names} r={r} foods={foods} tier={r.tier} />)}</div>
         </div>
       ))}
     </section>
   );
 }
 
-function ItemRow({ i, names, r, foods, tier }: { i: PlannedItem; names: Map<string, string>; r: PlanResult; foods: FoodItem[]; tier: Tier }) {
+function ItemRow({ i, names, r, foods, tier, startOpen = false }: { i: PlannedItem; names: Map<string, string>; r: PlanResult; foods: FoodItem[]; tier: Tier; startOpen?: boolean }) {
+  const [open, setOpen] = useState(startOpen);
   const [swapping, setSwapping] = useState(false);
   const conf = { high: 'ok', medium: '', low: 'warn' }[i.confidence];
+  const skips = kindsSummary(i.kinds)?.skip.length ?? 0;
   return (
     <div className="stack" style={{ gap: 6 }}>
-      <div className="spread" style={{ alignItems: 'flex-start' }}>
-        <div>
-          <Link to={`/admin/catalog/${i.foodId}`}><strong>{i.name}</strong></Link>
-          <div className="small muted">{i.why.join(' · ')}</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <strong style={{ fontSize: '1.15rem' }}>{i.packages} × {i.packageDesc || 'package'}</strong>
-          <div className="small muted">{num(i.servings)} servings{i.leftoverServings > 0 ? `, ${num(i.leftoverServings)} spare` : ''}{i.carbsG !== undefined ? ` · ~${i.carbsG} g carbs/serving` : ''}</div>
-        </div>
-      </div>
+      <button className="ghost" aria-expanded={open} onClick={() => setOpen(!open)}
+        style={{ justifyContent: 'space-between', alignItems: 'flex-start', textAlign: 'left', width: '100%', height: 'auto', padding: '6px 0', gap: 12, fontWeight: 'normal' }}>
+        <span>
+          <strong>{i.name}</strong>
+          {i.flags.length > 0 && <span className="badge warn" style={{ marginLeft: 6 }}>{i.flags.length === 1 ? '1 note' : `${i.flags.length} notes`}</span>}
+          {skips > 0 && <span className="badge danger" style={{ marginLeft: 6 }}>skip {skips === 1 ? '1 kind' : `${skips} kinds`}</span>}
+        </span>
+        <span className="row" style={{ gap: 8, flexWrap: 'nowrap', flex: 'none' }}>
+          <strong>{i.packages} × {i.packageDesc || 'package'}</strong>
+          <span aria-hidden>{open ? '▴' : '▾'}</span>
+        </span>
+      </button>
+      {open && <>
+      <div className="small muted">{i.why.join(' · ')}</div>
+      <div className="small muted">{num(i.servings)} servings{i.leftoverServings > 0 ? `, ${num(i.leftoverServings)} spare` : ''}{i.carbsG !== undefined ? ` · ~${i.carbsG} g carbs/serving` : ''} · <Link to={`/admin/catalog/${i.foodId}`}>Open in Catalog</Link></div>
       <div className="row" style={{ gap: 6 }}>
         <span className="badge" title="0–100 after safety rules">Score {i.score}</span>
         <span className={`badge ${conf}`}>{i.confidence} confidence</span>
@@ -245,6 +257,7 @@ function ItemRow({ i, names, r, foods, tier }: { i: PlannedItem; names: Map<stri
         </div>
         <p className="small muted" style={{ margin: '6px 0 0' }}>Shelf life {i.shelfLife} unopened. Score: acceptance {Math.round(i.factors.acceptance * 100)}, nutrition {Math.round(i.factors.nutrition * 100)}, prep {Math.round(i.factors.prep * 100)}, storage {Math.round(i.factors.storage * 100)}, cost/space {Math.round(i.factors.cost * 100)} (each out of 100).</p>
       </details>
+      </>}
     </div>
   );
 }
