@@ -275,7 +275,7 @@ function Stages({ stock, foods, warnDays, dek }: { stock: StockEntry[]; foods: F
 function FoodAddForm({ foodId, defaultQty, onDone }: { foodId: string; defaultQty: number; onDone: () => void }) {
   const food = useContext(Foods).get(foodId);
   const pkgDesc = food?.package.description ?? 'package';
-  const parsed = useMemo(() => parsePackageSize(pkgDesc), [pkgDesc]);
+  const parsed = parsePackageSize(pkgDesc);
   const [other, setOther] = useState(false);
   const [qty, setQty] = useState(String(defaultQty));
   const [size, setSize] = useState('');
