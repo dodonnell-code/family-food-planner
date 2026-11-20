@@ -20,6 +20,19 @@ export interface AttentionItem {
   action?: 'start-survey';
   /** Can be dismissed as "no retake needed". */
   dismissRefresh?: boolean;
+  /** How many things this one item stands for (e.g. "3 inventory items to use soon"); default 1. */
+  count?: number;
+}
+
+/** Things to look at, per page (the item's link without the member id or #section): drives the menu badges. */
+export function attentionByPage(items: AttentionItem[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const it of items) {
+    if (!it.link) continue;
+    const page = it.link.split('#')[0].split('/').slice(0, 3).join('/'); // /admin/members/abc → /admin/members
+    out[page] = (out[page] ?? 0) + (it.count ?? 1);
+  }
+  return out;
 }
 
 const fname = (m?: Pick<Member, 'displayName' | 'preferredName'>) => (m ? m.preferredName || m.displayName.split(/\s+/)[0] : 'Someone');
@@ -78,14 +91,14 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
 
   const reviewFoods = await database.foods.filter((f) => f.active && f.needsReview).count();
   if (reviewFoods > 0) {
-    items.push({ id: 'foodreview', severity: 'low', link: '/admin/catalog',
+    items.push({ id: 'foodreview', severity: 'low', link: '/admin/catalog', count: reviewFoods,
       title: `${reviewFoods} catalog food${reviewFoods === 1 ? '' : 's'} marked “needs review”`, detail: 'Check their allergens, preparation and package details.' });
   }
 
   const pending = await database.changes.where('status').equals('pending').toArray();
   if (pending.length > 0) {
     const unread = pending.filter((c) => !c.readAt).length;
-    items.push({ id: 'changes', severity: 'medium', link: '/admin/review#changes',
+    items.push({ id: 'changes', severity: 'medium', link: '/admin/review#changes', count: pending.length,
       title: `${pending.length} change${pending.length === 1 ? '' : 's'} waiting for your review`,
       detail: unread ? `${unread} unread. Approve to keep, or deny to undo.` : 'Approve to keep, or deny to undo.' });
   }
@@ -96,8 +109,8 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
   const warnDays = household?.settings.expiryWarningDays ?? EXPIRING_SOON_DAYS;
   const expired = stock.filter((e) => stockStatus(e, todayIso, warnDays) === 'expired').length;
   const expiring = stock.filter((e) => stockStatus(e, todayIso, warnDays) === 'expiring').length;
-  if (expired) items.push({ id: 'stock-expired', severity: 'medium', link: '/admin/inventory', title: `${expired} inventory item${expired === 1 ? ' is' : 's are'} past best-by`, detail: 'Replace them; they no longer count as on hand.' });
-  if (expiring) items.push({ id: 'stock-expiring', severity: 'low', link: '/admin/inventory', title: `${expiring} inventory item${expiring === 1 ? '' : 's'} to use soon`, detail: `Best-by within ${warnDays} days. Use them in everyday meals and restock.` });
+  if (expired) items.push({ id: 'stock-expired', severity: 'medium', link: '/admin/inventory', count: expired, title: `${expired} inventory item${expired === 1 ? ' is' : 's are'} past best-by`, detail: 'Replace them; they no longer count as on hand.' });
+  if (expiring) items.push({ id: 'stock-expiring', severity: 'low', link: '/admin/inventory', count: expiring, title: `${expiring} inventory item${expiring === 1 ? '' : 's'} to use soon`, detail: `Best-by within ${warnDays} days. Use them in everyday meals and restock.` });
 
   const last = household?.settings.lastBackupAt;
   const days = household?.settings.backupReminderDays ?? 14;

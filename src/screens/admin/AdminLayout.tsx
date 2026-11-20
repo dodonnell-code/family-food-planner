@@ -4,9 +4,10 @@ import { useSession } from '../../app/session';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
 import { inProgressSurvey, newSurveyQuestions, startOrResumeSurvey } from '../../data/repo';
-import { computeAttention } from '../../domain/attention';
+import { attentionByPage, computeAttention } from '../../domain/attention';
+import { loadFamilyRequests } from '../../data/requestsRepo';
+import { useSyncStatus } from '../LinkDevice';
 import { CATEGORY_LABELS } from './Catalog';
-import { surveysToDo } from './memberStatus';
 
 const StartSurvey = createContext<(memberId: string) => Promise<void>>(async () => {});
 
@@ -42,8 +43,13 @@ function currentLabel(pathname: string): string {
 export default function AdminLayout() {
   const { isAdmin, lock } = useSession();
   const nav = useNavigate();
-  const attentionCount = useLiveQuery(async () => (await computeAttention()).length, []);
-  const surveyCount = useLiveQuery(surveysToDo, []);
+  // Menu badges: how many things on each page need a look. Review counts everything it lists.
+  const counts = useLiveQuery(async () => {
+    const items = await computeAttention();
+    const open = (await loadFamilyRequests()).open.length;
+    return { ...attentionByPage(items), '/admin/plan': open, '/admin/review': items.length } as Record<string, number>;
+  }, []);
+  const sync = useSyncStatus();
   const [ask, setAsk] = useState<Ask | null>(null);
   const { pathname } = useLocation();
   // Set by the Lock button, so locking goes to the welcome screen instead of the passphrase screen.
@@ -62,8 +68,7 @@ export default function AdminLayout() {
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
   }, [menuOpen]);
 
-  // Badges: Review = items needing attention; Members = surveys still to do.
-  const badge = (to: string) => (to === '/admin/review' ? attentionCount : to === '/admin/members' ? surveyCount : 0);
+  const badge = (to: string) => (counts?.[to] ?? 0) + (to === '/admin/backup' && sync.phase === 'error' ? 1 : 0);
   const link = (l: MenuLink) => {
     const n = badge(l.to);
     return (
@@ -99,7 +104,7 @@ export default function AdminLayout() {
         <div className="inner">
           <div className="menu" ref={menuRef}>
             <button className="ghost menu-button" aria-expanded={menuOpen} aria-controls="admin-menu" onClick={() => setMenuOpen((o) => !o)}>
-              <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{(attentionCount || surveyCount) ? <span className="notify-dot" role="img" aria-label="Something needs attention" /> : null}
+              <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu
             </button>
             {menuOpen && (
               <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>

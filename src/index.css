@@ -126,7 +126,6 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
 .topbar .inner { flex-wrap: nowrap; }
 .menu { position: relative; }
 .menu-button { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
-.notify-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg); align-self: flex-start; margin-left: -4px; }
 .menu-current { flex: 1; min-width: 0; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 20; width: 260px; display: flex; flex-direction: column; padding: 6px; max-height: calc(100dvh - 90px); overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 34px rgb(0 0 0 / 0.2); }
 .menu-panel a { padding: 12px 14px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; }
