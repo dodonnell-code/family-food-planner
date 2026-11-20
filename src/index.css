@@ -122,28 +122,21 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
 
 .topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
 .topbar .inner { max-width: 980px; margin: 0 auto; padding: 10px 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.topbar nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
-.topbar nav a { padding: 10px 14px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; }
-.topbar nav a.active { background: var(--accent-soft); color: var(--accent); }
-/* Admin menu: one line on larger screens ("More" holds the less-used pages); Menu button on phones. */
-.topbar nav.nav-wide { flex-wrap: nowrap; align-items: center; }
-.topbar nav a, .more-button { white-space: nowrap; }
-.more { position: relative; }
-.more-button { padding: 10px 14px; font-weight: 600; }
-.more-button.active { background: var(--accent-soft); color: var(--accent); }
-.more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 190px; display: flex; flex-direction: column; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); }
-.more-menu a { padding: 12px 14px; border-radius: 8px; text-decoration: none; color: var(--text); font-weight: 600; }
-.more-menu a.active { background: var(--accent-soft); color: var(--accent); }
-.menu-button, .menu-current, .menu-panel { display: none; }
-@media (max-width: 860px) {
-  .topbar .inner { flex-wrap: nowrap; padding: 6px 8px 6px 12px; }
-  .topbar nav.nav-wide { display: none; }
-  .menu-button { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
-  .menu-current { display: block; flex: 1; min-width: 0; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .menu-panel { display: flex; flex-direction: column; padding: 4px 12px 12px; max-height: calc(100dvh - 64px); overflow-y: auto; border-top: 1px solid var(--border); }
-  .menu-panel a { padding: 14px 12px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 1.05rem; }
-  .menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
-  .menu-group { padding: 12px 12px 4px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: 1px solid var(--border); margin-top: 6px; }
+/* Admin menu: the same Menu button on every screen. A dropdown card on larger screens; full width on phones. */
+.topbar .inner { flex-wrap: nowrap; }
+.menu { position: relative; }
+.menu-button { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
+.menu-current { flex: 1; min-width: 0; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 20; width: 260px; display: flex; flex-direction: column; padding: 6px; max-height: calc(100dvh - 90px); overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 34px rgb(0 0 0 / 0.2); }
+.menu-panel a { padding: 12px 14px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; }
+.menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
+.menu-group { padding: 10px 14px 4px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: 1px solid var(--border); margin-top: 6px; }
+@media (max-width: 700px) {
+  .topbar .inner { padding: 6px 8px 6px 12px; }
+  /* Phones: the menu drops down full width under the bar. */
+  .menu { position: static; }
+  .menu-panel { left: 0; right: 0; top: 100%; width: auto; border-radius: 0 0 14px 14px; border-width: 0 0 1px; padding: 6px 12px 12px; max-height: calc(100dvh - 64px); }
+  .menu-panel a { padding: 14px 12px; font-size: 1.05rem; }
 }
 @media (max-width: 700px) { .page { padding: 16px 16px 48px; } }
 /* Form controls never push the page wider than the screen. */

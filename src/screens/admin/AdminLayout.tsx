@@ -29,7 +29,7 @@ const MAIN: MenuLink[] = [
   { to: '/admin/catalog', label: 'Catalog' },
   { to: '/admin/review', label: 'Review' },
 ];
-/** Less-used pages: under "More" on larger screens, under a "More" heading in the phone menu. */
+/** Less-used pages, under a "More" heading in the menu. */
 const MORE: MenuLink[] = [
   { to: '/admin/members', label: 'Members' },
   { to: '/admin/settings', label: 'Settings' },
@@ -48,20 +48,19 @@ export default function AdminLayout() {
   const { pathname } = useLocation();
   // Set by the Lock button, so locking goes to the welcome screen instead of the passphrase screen.
   const locking = useRef(false);
-  const [menuOpen, setMenuOpen] = useState(false); // phone menu
-  const [moreOpen, setMoreOpen] = useState(false); // "More" on larger screens
-  const moreRef = useRef<HTMLDivElement>(null);
-  // Tapping a link closes the menus.
-  const closeOnLink = (e: React.MouseEvent) => { if ((e.target as HTMLElement).closest('a')) { setMenuOpen(false); setMoreOpen(false); } };
-  // Close "More" on a click outside it; Escape closes either menu.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Tapping a link closes the menu.
+  const closeOnLink = (e: React.MouseEvent) => { if ((e.target as HTMLElement).closest('a')) setMenuOpen(false); };
+  // A tap outside the menu, or Escape, closes it.
   useEffect(() => {
-    if (!moreOpen && !menuOpen) return;
-    const onDown = (e: PointerEvent) => { if (moreOpen && !moreRef.current?.contains(e.target as Node)) setMoreOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMoreOpen(false); setMenuOpen(false); } };
+    if (!menuOpen) return;
+    const onDown = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [moreOpen, menuOpen]);
+  }, [menuOpen]);
 
   async function go(memberId: string, onlyNew = false) {
     setAsk(null);
@@ -89,32 +88,21 @@ export default function AdminLayout() {
     <StartSurvey.Provider value={start}>
       <header className="topbar no-print">
         <div className="inner">
-          {/* Phones: Menu button + the current page's name. */}
-          <button className="ghost menu-button" aria-expanded={menuOpen} aria-controls="admin-menu" onClick={() => setMenuOpen((o) => !o)}>
-            <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{attentionCount ? <span className="badge warn">{attentionCount}</span> : null}
-          </button>
+          <div className="menu" ref={menuRef}>
+            <button className="ghost menu-button" aria-expanded={menuOpen} aria-controls="admin-menu" onClick={() => setMenuOpen((o) => !o)}>
+              <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{attentionCount ? <span className="badge warn">{attentionCount}</span> : null}
+            </button>
+            {menuOpen && (
+              <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>
+                {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
+                <div className="menu-group" aria-hidden>More</div>
+                {MORE.map((l) => <NavLink key={l.to} to={l.to}>{l.label}</NavLink>)}
+              </nav>
+            )}
+          </div>
           <span className="menu-current">{currentLabel(pathname)}</span>
-          {/* Larger screens: one line, with the less-used pages under More. */}
-          <nav aria-label="Admin" className="nav-wide">
-            {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
-            <div className="more" ref={moreRef}>
-              <button type="button" className={`ghost more-button${MORE.some((l) => pathname.startsWith(l.to)) ? ' active' : ''}`} aria-expanded={moreOpen} aria-haspopup="true" onClick={() => setMoreOpen((o) => !o)}>More ▾</button>
-              {moreOpen && (
-                <div className="more-menu" role="menu" onClick={closeOnLink}>
-                  {MORE.map((l) => <NavLink key={l.to} to={l.to} role="menuitem">{l.label}</NavLink>)}
-                </div>
-              )}
-            </div>
-          </nav>
           <button className="ghost" onClick={() => { locking.current = true; nav('/welcome', { replace: true }); lock(); }}>Lock</button>
         </div>
-        {menuOpen && (
-          <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>
-            {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
-            <div className="menu-group" aria-hidden>More</div>
-            {MORE.map((l) => <NavLink key={l.to} to={l.to}>{l.label}</NavLink>)}
-          </nav>
-        )}
       </header>
       <main className="page">
         <Outlet />
