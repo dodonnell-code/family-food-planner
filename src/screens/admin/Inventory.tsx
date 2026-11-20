@@ -8,8 +8,9 @@ import { PlanPicker, usePlanChoice } from '../../app/planChoice';
 import { db } from '../../data/db';
 import { computePlan } from '../../data/planRepo';
 import { addStock, clearStock, consumeStock, setEquipmentHave, undoStockChange } from '../../data/inventoryRepo';
+import { addToShopping, removeShopping } from '../../data/shoppingRepo';
 import { inventoryStatus, type NeedRow } from '../../domain/inventory';
-import type { StockEntry } from '../../domain/types';
+import type { ShoppingItem, StockEntry } from '../../domain/types';
 import { AddForm, Entries, FoodStockForm, num, today, UseForm, useWarnDays, varietySummary } from './stock';
 
 type Show = 'all' | 'buy' | 'have';
@@ -28,6 +29,9 @@ export default function Inventory() {
   const status = useMemo(() => (plan && stock && foods ? inventoryStatus(plan.result, stock, foods, today(), warnDays) : undefined), [plan, stock, foods, warnDays]);
   const [q, setQ] = useState('');
   const undo = useUndo();
+  // What's on the shopping list (not yet bought), by food id ('water' for water).
+  const shopping = useLiveQuery(() => db.shopping.filter((s) => !s.checked).toArray(), []);
+  const onList = useMemo(() => { const m = new Map<string, ShoppingItem[]>(); for (const s of shopping ?? []) { const k = s.kind === 'water' ? 'water' : s.foodId ?? ''; m.set(k, [...(m.get(k) ?? []), s]); } return m; }, [shopping]);
 
   const all = useMemo(() => (status ? [...status.rows, ...status.extras].sort((a, b) => a.name.localeCompare(b.name)) : []), [status]);
   const counts: Record<Show, number> = { all: all.length, buy: all.filter((r) => r.toBuy > 0).length, have: all.filter((r) => r.entries.length > 0).length };
@@ -38,7 +42,7 @@ export default function Inventory() {
     <div className="stack">
       <div className="spread">
         <h1 style={{ margin: 0 }}>Inventory</h1>
-        <span className="row small" style={{ gap: 12 }}><Link to={`/admin/deals?tier=${tier}&scenario=${scenario}`}>Find deals</Link><Link to={`/admin/reports?tier=${tier}&scenario=${scenario}&stillToBuy=1`}>Print what’s still to buy</Link></span>
+        <span className="row small" style={{ gap: 12 }}><Link to="/admin/shopping">Shopping list{shopping?.length ? ` (${shopping.length})` : ''}</Link><Link to={`/admin/deals?tier=${tier}&scenario=${scenario}`}>Find deals</Link><Link to={`/admin/reports?tier=${tier}&scenario=${scenario}&stillToBuy=1`}>Print what’s still to buy</Link></span>
       </div>
       <PlanPicker />
 
@@ -54,12 +58,12 @@ export default function Inventory() {
             </div>
             <label>Search<input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. beans" /></label>
             {shown.length === 0 ? <p className="muted" style={{ margin: 0 }}>{emptyText}</p> : (
-              <div className="list">{shown.map((r) => <FoodRow key={r.foodId} r={r} undo={undo.show} />)}</div>
+              <div className="list">{shown.map((r) => <FoodRow key={r.foodId} r={r} undo={undo.show} listed={onList.get(r.foodId)} />)}</div>
             )}
             <AddOther foods={(foods ?? []).filter((f) => f.active).sort((a, b) => a.name.localeCompare(b.name))} />
           </section>
 
-          <Water need={status.water.needGallons} entries={status.water.entries} />
+          <Water need={status.water.needGallons} toBuy={status.water.toBuyGallons} entries={status.water.entries} listed={onList.get('water')} />
 
           <section className="card stack">
             <h2 style={{ margin: 0 }}>Equipment</h2>
@@ -98,7 +102,14 @@ function useUndo() {
   return { show, toast };
 }
 
-function FoodRow({ r, undo }: { r: NeedRow; undo: (text: string, before: StockEntry[]) => void }) {
+/** "Add to list" / "On list" (tap again to take it off). */
+function ListButton({ listed, add }: { listed?: ShoppingItem[]; add: () => Promise<unknown> }) {
+  return listed?.length
+    ? <button className="primary" aria-pressed onClick={() => Promise.all(listed.map((s) => removeShopping(s.id)))} title="On the shopping list. Tap to take it off.">✓ On list</button>
+    : <button aria-pressed={false} onClick={add}>+ List</button>;
+}
+
+function FoodRow({ r, undo, listed }: { r: NeedRow; undo: (text: string, before: StockEntry[]) => void; listed?: ShoppingItem[] }) {
   const [mode, setMode] = useState<'add' | 'details' | null>(null);
   const onHand = r.entries.reduce((t, e) => t + e.quantity, 0);
   const kinds = varietySummary(r.entries);
@@ -117,6 +128,7 @@ function FoodRow({ r, undo }: { r: NeedRow; undo: (text: string, before: StockEn
         <div className="row" style={{ gap: 6 }}>
           {r.toBuy > 0 ? <strong style={{ fontSize: '1.1rem' }}>Buy {r.toBuy}</strong> : r.need > 0 && <span className="badge ok">✓ stocked</span>}
           <button onClick={() => setMode(mode === 'add' ? null : 'add')}>{mode === 'add' ? 'Cancel' : 'Add'}</button>
+          <ListButton listed={listed} add={() => addToShopping({ kind: 'food', foodId: r.foodId, name: r.name, quantity: r.toBuy || 1, packageDesc: r.packageDesc })} />
           {onHand > 0 && <button onClick={async () => { const amt = Math.min(1, onHand); undo(`Took ${num(amt)} × ${r.name} out`, await consumeStock(r.entries, amt, today())); }}>Used 1</button>}
           {onHand > 0 && <button className="ghost" aria-expanded={mode === 'details'} onClick={() => setMode(mode === 'details' ? null : 'details')}>{mode === 'details' ? 'Hide' : `Details (${r.entries.length})`}</button>}
         </div>
@@ -149,7 +161,7 @@ function AddOther({ foods }: { foods: { id: string; name: string }[] }) {
   );
 }
 
-function Water({ need, entries }: { need: number; entries: StockEntry[] }) {
+function Water({ need, toBuy, entries, listed }: { need: number; toBuy: number; entries: StockEntry[]; listed?: ShoppingItem[] }) {
   const [mode, setMode] = useState<'add' | 'use' | null>(null);
   const onHand = entries.reduce((t, e) => t + e.quantity, 0);
   return (
@@ -158,6 +170,7 @@ function Water({ need, entries }: { need: number; entries: StockEntry[] }) {
         <h2 style={{ margin: 0 }}>Water</h2>
         <span className="row" style={{ gap: 6 }}>
           <button onClick={() => setMode(mode === 'add' ? null : 'add')}>{mode === 'add' ? 'Cancel' : 'Add water'}</button>
+          <ListButton listed={listed} add={() => addToShopping({ kind: 'water', name: 'Water', quantity: Math.max(1, Math.ceil(toBuy)) })} />
           {onHand > 0 && <button onClick={() => setMode(mode === 'use' ? null : 'use')}>{mode === 'use' ? 'Cancel' : 'Used some'}</button>}
         </span>
       </div>

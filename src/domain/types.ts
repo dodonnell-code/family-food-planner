@@ -413,6 +413,36 @@ export interface PlanSnapshot {
 }
 
 // ---------- Inventory ----------
+/** A sale picked on the Deals page, kept with the shopping-list line it's for. */
+export interface ShoppingSale {
+  /** Flyer item id (to show "On list" on Deals). */
+  saleId?: number;
+  store: string;
+  product: string;
+  price: string;
+  through?: ISODate;
+}
+
+/** One line of the shared shopping list. Checked off while shopping, then put into inventory. */
+export interface ShoppingItem {
+  id: ID;
+  kind: 'food' | 'water' | 'other';
+  /** Catalog food (kind 'food'). */
+  foodId?: ID;
+  /** Food name, "Water", or whatever was typed. */
+  name: string;
+  /** Packages (food) or gallons (water); optional for typed items. */
+  quantity?: number;
+  /** "15 oz can"; shown next to the amount. */
+  packageDesc?: string;
+  variety?: string;
+  note?: string;
+  sale?: ShoppingSale;
+  checked: boolean;
+  addedAt: string;
+  updatedAt: string;
+}
+
 /**
  * Something the household has on hand. Several entries per food are normal (different
  * purchases with different best-by dates); on-hand = sum of unexpired entries.

@@ -21,6 +21,7 @@ import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
 import LinkDevice from './screens/LinkDevice';
 import Dashboard from './screens/admin/Dashboard';
+import Shopping from './screens/admin/Shopping';
 import OnHand from './screens/OnHand';
 import { initSync } from './data/cloud';
 import { getDeviceOwner } from './data/device';
@@ -66,6 +67,7 @@ function Routed() {
         <Route path="inventory" element={<Inventory />} />
         <Route path="on-hand" element={<Navigate to="/admin/inventory?show=have" replace />} />
         <Route path="deals" element={<Deals />} />
+        <Route path="shopping" element={<Shopping />} />
         <Route path="reports" element={<Reports />} />
         <Route path="backup" element={<Backup />} />
         <Route path="settings" element={<Settings />} />

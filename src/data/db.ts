@@ -16,6 +16,7 @@ import type {
   Survey,
   StockEntry,
   SurveyAnswer,
+  ShoppingItem,
 } from '../domain/types';
 
 /** Local IndexedDB store (scope §10: structured storage, not a localStorage blob). */
@@ -38,6 +39,7 @@ export class PlannerDB extends Dexie {
   conditions!: EntityTable<MemberCondition, 'id'>;
   changes!: EntityTable<ChangeRecord, 'id'>;
   stock!: EntityTable<StockEntry, 'id'>;
+  shopping!: EntityTable<ShoppingItem, 'id'>;
 
   constructor(name = 'family-food-planner') {
     super(name);
@@ -89,6 +91,8 @@ export class PlannerDB extends Dexie {
     this.version(3).stores({ changes: 'id, timestamp, status, memberId, entity, entityId' });
     // v4: inventory (what's on hand).
     this.version(4).stores({ stock: 'id, kind, foodId, bestBy' });
+    // v5: the shared shopping list.
+    this.version(5).stores({ shopping: 'id, foodId, checked' });
   }
 }
 

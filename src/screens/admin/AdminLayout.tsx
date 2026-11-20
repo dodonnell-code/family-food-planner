@@ -26,6 +26,7 @@ const MAIN: MenuLink[] = [
   { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/admin/inventory', label: 'Inventory' },
   { to: '/admin/plan', label: 'Plan' },
+  { to: '/admin/shopping', label: 'Shopping list' },
   { to: '/admin/deals', label: 'Deals' },
 ];
 /** Under the "Admin" heading in the menu. */

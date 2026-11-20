@@ -19,7 +19,7 @@ export const BACKUP_EXTENSION = '.ffpbackup';
 /** Tables included in a backup (meta is handled separately: the vault travels in the envelope). */
 export const BACKUP_TABLES = [
   'households', 'members', 'restrictions', 'needs', 'conditions', 'customFields', 'customValues',
-  'foods', 'surveys', 'answers', 'scenarios', 'snapshots', 'stock', 'changes', 'audit',
+  'foods', 'surveys', 'answers', 'scenarios', 'snapshots', 'stock', 'shopping', 'changes', 'audit',
 ] as const;
 type TableName = (typeof BACKUP_TABLES)[number];
 /** Meta keys worth keeping (never the auth throttle state). */
@@ -132,5 +132,5 @@ export async function eraseAll(database: PlannerDB = defaultDb) {
 export const TABLE_LABELS: Record<TableName, string> = {
   households: 'Household', members: 'Members', restrictions: 'Restrictions & dislikes', needs: 'Food needs', conditions: 'Health conditions',
   customFields: 'Custom fields', customValues: 'Custom field values', foods: 'Catalog foods', surveys: 'Surveys', answers: 'Survey answers',
-  scenarios: 'Plan settings', snapshots: 'Saved plans', stock: 'Inventory entries', changes: 'Change history', audit: 'Activity log',
+  scenarios: 'Plan settings', snapshots: 'Saved plans', stock: 'Inventory entries', shopping: 'Shopping list items', changes: 'Change history', audit: 'Activity log',
 };

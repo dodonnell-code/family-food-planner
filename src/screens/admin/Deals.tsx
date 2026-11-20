@@ -2,22 +2,19 @@
 // from Flipp by zip code. The zip stays on this device; "Use my location" looks it up once.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { fmtDay } from '../../app/ui';
+import { PlanPicker, usePlanChoice } from '../../app/planChoice';
+import type { Scenario, Tier } from '../../domain/types';
+import { addToShopping, removeSale, saleOf } from '../../data/shoppingRepo';
 import { db } from '../../data/db';
 import { clearFlyerCache, runPooled, searchFlyers, storeProducts } from '../../data/flyers';
-import { computePlan, defaultScenario, SCENARIO_LABEL, TIER_LABEL } from '../../data/planRepo';
+import { computePlan } from '../../data/planRepo';
 import { EXPIRING_SOON_DAYS, inventoryStatus } from '../../domain/inventory';
-import { bestSale, onlineOnly, flyerTerms, isMyStore, MY_STORES, ONLINE_STORES, onlineSales, salesFor, unitText, validZip, WATER_TERMS, type FlyerItem, type OnlineSale, type Sale } from '../../domain/deals';
-import type { Scenario, Tier } from '../../domain/types';
-
-const TIERS: Tier[] = ['short', 'medium', 'long'];
-const SCENARIOS: Scenario[] = ['no-cook', 'limited-cook'];
+import { bestSale, flyerTerms, isMyStore, MY_STORES, ONLINE_STORES, onlineSales, salesFor, unitText, validZip, WATER_TERMS, type FlyerItem, type OnlineSale, type Sale } from '../../domain/deals';
 const ZIP_KEY = 'deals.zip';
 const MINE_KEY = 'deals.myStoresOnly';
-const PICKS_KEY = 'deals.picks';
-const CHECKED_KEY = 'deals.checked';
 const num = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 function load(key: string): string | null {
@@ -41,15 +38,17 @@ async function zipFromDevice(): Promise<string> {
   return zip;
 }
 
-interface Need { key: string; name: string; need: string; reserved?: boolean; terms: string[] }
+interface Need { key: string; name: string; need: string; reserved?: boolean; terms: string[]; qty: number; packageDesc?: string }
 type Results = Record<string, Sale[]>;
-type View = 'compare' | 'list';
 
+/** A different plan means different foods to search: start the page over. */
 export default function Deals() {
+  const { tier, scenario } = usePlanChoice();
+  return <DealsFor key={`${tier}:${scenario}`} tier={tier} scenario={scenario} />;
+}
+
+function DealsFor({ tier, scenario }: { tier: Tier; scenario: Scenario }) {
   const { dek } = useSession();
-  const [params, setParams] = useSearchParams();
-  const tier = (TIERS.includes(params.get('tier') as Tier) ? params.get('tier') : 'short') as Tier;
-  const scenario = (SCENARIOS.includes(params.get('scenario') as Scenario) ? params.get('scenario') : defaultScenario(tier)) as Scenario;
 
   const plan = useLiveQuery(() => computePlan(tier, scenario, dek), [tier, scenario, dek]);
   const stock = useLiveQuery(() => db.stock.toArray(), []);
@@ -61,9 +60,9 @@ export default function Deals() {
     if (!status) return [];
     const rows: Need[] = status.rows.filter((r) => r.toBuy > 0).map((r) => ({
       key: r.foodId, name: r.name, need: `Buy ${r.toBuy} × ${r.packageDesc}`, reserved: r.reserved,
-      terms: flyerTerms(r.foodId, r.name),
+      terms: flyerTerms(r.foodId, r.name), qty: r.toBuy, packageDesc: r.packageDesc,
     }));
-    if (status.water.toBuyGallons > 0) rows.push({ key: 'water', name: 'Water', need: `Buy ${num(status.water.toBuyGallons)} gallons`, terms: WATER_TERMS });
+    if (status.water.toBuyGallons > 0) rows.push({ key: 'water', name: 'Water', need: `Buy ${num(status.water.toBuyGallons)} gallons`, terms: WATER_TERMS, qty: Math.ceil(status.water.toBuyGallons) });
     return rows;
   }, [status]);
 
@@ -72,7 +71,6 @@ export default function Deals() {
   const [locating, setLocating] = useState(false);
   const [zipErr, setZipErr] = useState('');
   const [mine, setMine] = useState(() => load(MINE_KEY) !== '0');
-  const [view, setView] = useState<View>('compare');
   const [results, setResults] = useState<Results>();
   const [progress, setProgress] = useState<{ done: number; total: number }>();
   const [err, setErr] = useState('');
@@ -116,26 +114,17 @@ export default function Deals() {
     }
   }
 
-  const resetResults = () => { abort.current?.abort(); setProgress(undefined); setResults(undefined); };
   const searching = !!progress;
 
   return (
     <div className="stack">
       <div className="spread no-print">
         <h1 style={{ margin: 0 }}>Deals</h1>
-        <Link to={`/admin/inventory?tier=${tier}&scenario=${scenario}`} className="small">Back to inventory</Link>
+        <span className="row small" style={{ gap: 12 }}><Link to="/admin/shopping">Shopping list</Link><Link to="/admin/inventory?show=buy">Inventory</Link></span>
       </div>
       <p className="muted no-print" style={{ margin: 0 }}>This week’s sales near you on everything still to buy, from local store flyers.</p>
 
-      <div className="row no-print">
-        <span className="small muted">Shopping list for:</span>
-        {TIERS.map((t) => (
-          <button key={t} role="tab" aria-selected={tier === t} className={tier === t ? 'primary' : ''} onClick={() => { resetResults(); setParams({ tier: t, scenario: defaultScenario(t) }, { replace: true }); }}>{TIER_LABEL[t]}</button>
-        ))}
-        <select aria-label="Scenario" value={scenario} onChange={(e) => { resetResults(); setParams({ tier, scenario: e.target.value }, { replace: true }); }} style={{ maxWidth: 200 }}>
-          {SCENARIOS.map((s) => <option key={s} value={s}>{SCENARIO_LABEL[s]}</option>)}
-        </select>
-      </div>
+      <div className="no-print"><PlanPicker /></div>
 
       <section className="card stack no-print">
         <form className="row" style={{ alignItems: 'flex-end' }} onSubmit={(e) => { e.preventDefault(); if (!validZip(draft)) return setZipErr('Enter a 5-digit zip code.'); applyZip(draft.trim()); }}>
@@ -161,7 +150,7 @@ export default function Deals() {
       ) : !needs.length ? (
         <div className="notice ok">Everything in this plan is on hand.</div>
       ) : results && (
-        <Found needs={needs} results={results} mine={mine} view={view} setView={setView} title={`Emergency food shopping list (${TIER_LABEL[tier]})`} />
+        <Found needs={needs} results={results} mine={mine} />
       )}
 
       <OnlineSales />
@@ -169,79 +158,43 @@ export default function Deals() {
   );
 }
 
-function loadJson<T>(key: string, fallback: T): T {
-  try { return (JSON.parse(load(key) ?? '') as T) ?? fallback; } catch { return fallback; }
-}
-
-/** One line of the shopping list: a food, a sale picked for it (if any), and other stores it's also picked at. */
-interface Line { need: Need; sale?: Sale; also: string[] }
-
-/** Saved picks: sale ids per food (empty = buy it anywhere). Older versions saved one id or 'none'. */
-function loadPicks(): Record<string, number[]> {
-  const raw = loadJson<Record<string, unknown>>(PICKS_KEY, {});
-  const out: Record<string, number[]> = {};
-  for (const [k, v] of Object.entries(raw ?? {})) {
-    if (Array.isArray(v)) out[k] = v.filter((x): x is number => typeof x === 'number');
-    else if (typeof v === 'number') out[k] = [v];
-    else if (v === 'none') out[k] = [];
-  }
-  return out;
-}
-
-function Found({ needs, results, mine, view, setView, title }: { needs: Need[]; results: Results; mine: boolean; view: View; setView: (v: View) => void; title: string }) {
+function Found({ needs, results, mine }: { needs: Need[]; results: Results; mine: boolean }) {
   const shown = useMemo(() => Object.fromEntries(needs.map((n) => [n.key, (results[n.key] ?? []).filter((s) => !mine || isMyStore(s.store))])), [needs, results, mine]);
   const best = useMemo(() => Object.fromEntries(needs.map((n) => [n.key, bestSale(shown[n.key])])), [needs, shown]);
-  // Picks: which sales to buy each food at (several are fine, e.g. two kinds of soup at two stores).
-  // Default: the best deal, or the first in-store sale; online-only features (often premium items)
-  // are never picked for you. Saved picks from an older week (no longer in the flyers) fall back to the default.
-  const [picks, setPicks] = useState<Record<string, number[]>>(loadPicks);
-  const chosen = (n: Need): Sale[] => {
-    const list = shown[n.key];
-    const saved = picks[n.key];
-    if (saved && (saved.length === 0 || list.some((s) => saved.includes(s.id)))) return list.filter((s) => saved.includes(s.id));
-    const first = list.find((s) => s.id === best[n.key]?.id && !onlineOnly(s)) ?? list.find((s) => !onlineOnly(s));
-    return first ? [first] : [];
+  // Sales already on the shopping list (not yet bought).
+  const listed = useLiveQuery(async () => new Set((await db.shopping.filter((s) => !s.checked).toArray()).map((s) => s.sale?.saleId).filter((x): x is number => x !== undefined)), []) ?? new Set<number>();
+  const toggle = (n: Need, s: Sale) => {
+    const key = n.key === 'water' ? { kind: 'water' as const } : { kind: 'food' as const, foodId: n.key };
+    if (listed.has(s.id)) return removeSale(key, s.id);
+    return addToShopping({ ...key, name: n.name, quantity: n.qty, packageDesc: n.packageDesc, sale: saleOf(s) });
   };
-  const toggle = (n: Need, id: number) => {
-    const ids = chosen(n).map((s) => s.id);
-    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
-    setPicks((p) => { const all = { ...p, [n.key]: next }; save(PICKS_KEY, JSON.stringify(all)); return all; });
-  };
-  const lines: Line[] = needs.flatMap((need): Line[] => {
-    const sales = chosen(need);
-    if (!sales.length) return [{ need, also: [] }];
-    return sales.map((sale) => ({ need, sale, also: [...new Set(sales.filter((x) => x.store !== sale.store).map((x) => x.store))] }));
-  });
 
   const withSales = needs.filter((n) => shown[n.key].length);
   const elsewhere = needs.filter((n) => !shown[n.key].length && (results[n.key] ?? []).length).length;
+  const onList = withSales.reduce((t, n) => t + shown[n.key].filter((s) => listed.has(s.id)).length, 0);
 
   return (
     <>
-      <div className="spread no-print">
+      <div className="spread">
         <strong>{withSales.length} of {needs.length} foods on sale this week{mine ? ' at your stores' : ''}</strong>
-        <span className="row" style={{ gap: 6 }} role="tablist">
-          <button role="tab" aria-selected={view === 'compare'} className={view === 'compare' ? 'primary' : ''} onClick={() => setView('compare')}>Compare prices</button>
-          <button role="tab" aria-selected={view === 'list'} className={view === 'list' ? 'primary' : ''} onClick={() => setView('list')}>Shopping list</button>
-        </span>
+        <Link to="/admin/shopping" className="btn">Shopping list{onList ? ` (${onList} from here)` : ''}</Link>
       </div>
-
-      {view === 'list' ? <ShoppingList lines={lines} title={title} /> : withSales.length === 0 ? (
+      {withSales.length === 0 ? (
         <div className="notice">No sales found this week{mine ? ' at your stores' : ''}.{mine && elsewhere > 0 && ' Untick “Only your stores” to see other stores nearby.'}</div>
       ) : (
         <section className="card stack">
-          <p className="small muted" style={{ margin: 0 }}><strong>Best price</strong> compares the price per ounce (or per count) when the flyers give sizes. When they don’t, the cheapest is marked <strong>lowest price</strong>, so check the sizes. Tap <strong>Add to list</strong> on any sale to put it on your shopping list (as many as you like per food); the best deal is added to start.</p>
+          <p className="small muted" style={{ margin: 0 }}><strong>Best price</strong> compares the price per ounce (or per count) when the flyers give sizes. When they don’t, the cheapest is marked <strong>lowest price</strong>, so check the sizes. Tap <strong>Add to list</strong> on a sale to put it on the shopping list with the store and price (as many as you like per food).</p>
           <div className="list">
             {withSales.map((n) => {
-              const ids = chosen(n).map((s) => s.id);
+              const count = shown[n.key].filter((s) => listed.has(s.id)).length;
               return (
                 <div key={n.key} className="stack" style={{ gap: 8 }}>
                   <div>
                     <strong>{n.name}</strong>{n.reserved && <span className="badge" style={{ marginLeft: 6 }}>individual need</span>} <span className="small muted">· {n.need}</span>
-                    {ids.length > 1 && <span className="badge ok" style={{ marginLeft: 6 }}>{ids.length} on list</span>}
+                    {count > 0 && <span className="badge ok" style={{ marginLeft: 6 }}>{count} on list</span>}
                   </div>
                   {shown[n.key].map((s) => (
-                    <SaleRow key={s.id} s={s} best={best[n.key]?.id === s.id ? best[n.key]!.basis : undefined} picked={ids.includes(s.id)} onPick={() => toggle(n, s.id)} />
+                    <SaleRow key={s.id} s={s} best={best[n.key]?.id === s.id ? best[n.key]!.basis : undefined} picked={listed.has(s.id)} onPick={() => toggle(n, s)} />
                   ))}
                 </div>
               );
@@ -249,7 +202,7 @@ function Found({ needs, results, mine, view, setView, title }: { needs: Need[]; 
           </div>
           {needs.length > withSales.length && (
             <p className="small muted" style={{ margin: 0 }}>
-              {needs.length - withSales.length} {needs.length - withSales.length === 1 ? 'food isn’t' : 'foods aren’t'} on sale this week; {needs.length - withSales.length === 1 ? 'it’s' : 'they’re'} at the end of the shopping list.
+              {needs.length - withSales.length} {needs.length - withSales.length === 1 ? 'food isn’t' : 'foods aren’t'} on sale this week. Add {needs.length - withSales.length === 1 ? 'it' : 'them'} to the shopping list from Inventory.
               {mine && elsewhere > 0 && ` ${elsewhere} ${elsewhere === 1 ? 'is' : 'are'} on sale at other stores nearby (untick “Only your stores”).`}
             </p>
           )}
@@ -276,76 +229,6 @@ function SaleRow({ s, best, picked, onPick }: { s: Sale; best?: 'unit' | 'lowest
       </div>
       <button className={picked ? 'primary' : ''} style={{ minHeight: 36, padding: '0 12px', flex: 'none' }} aria-pressed={picked} onClick={onPick}>{picked ? '✓ On list' : 'Add to list'}</button>
     </div>
-  );
-}
-
-/** The picks grouped by store, plus everything not on sale. Tick items off while shopping; print or share it. */
-function ShoppingList({ lines, title }: { lines: Line[]; title: string }) {
-  const [checked, setChecked] = useState<string[]>(() => loadJson(CHECKED_KEY, []));
-  const [msg, setMsg] = useState('');
-  const toggle = (key: string) => setChecked((c) => { const next = c.includes(key) ? c.filter((k) => k !== key) : [...c, key]; save(CHECKED_KEY, JSON.stringify(next)); return next; });
-
-  const stores = useMemo(() => {
-    const m = new Map<string, Line[]>();
-    for (const l of lines) if (l.sale) m.set(l.sale.store, [...(m.get(l.sale.store) ?? []), l]);
-    return [...m].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
-  }, [lines]);
-  const anywhere = lines.filter((l) => !l.sale);
-
-  const text = [
-    title,
-    ...stores.flatMap(([store, ls]) => ['', store.toUpperCase(), ...ls.map((l) => `- ${l.need.name}: ${l.sale!.product} ${l.sale!.price}${l.sale!.through ? ` (through ${fmtDay(l.sale!.through)})` : ''} [${l.need.need}${l.also.length ? `, also at ${l.also.join(', ')}` : ''}]`)]),
-    ...(anywhere.length ? ['', 'NOT ON SALE (ANY STORE)', ...anywhere.map((l) => `- ${l.need.name} [${l.need.need}]`)] : []),
-  ].join('\n');
-
-  async function share() {
-    setMsg('');
-    try {
-      if (navigator.share) { await navigator.share({ title, text }); return; }
-      await navigator.clipboard.writeText(text);
-      setMsg('Copied. Paste it into a text or note.');
-    } catch (x) {
-      if (x instanceof Error && x.name === 'AbortError') return;
-      setMsg('Couldn’t share from this device. Try Print instead.');
-    }
-  }
-
-  const row = (l: Line) => {
-    const key = `${l.need.key}|${l.sale?.id ?? 'any'}`;
-    return (
-      <label key={key} className="inline" style={{ alignItems: 'flex-start', opacity: checked.includes(key) ? 0.55 : 1 }}>
-        <input type="checkbox" checked={checked.includes(key)} onChange={() => toggle(key)} />
-        <span>
-          <strong style={{ textDecoration: checked.includes(key) ? 'line-through' : undefined }}>{l.need.name}</strong> <span className="small muted">· {l.need.need}</span>
-          {l.sale && <span className="small" style={{ display: 'block' }}>{l.sale.product} · <strong>{l.sale.price}</strong>{l.sale.through && <span className="muted"> · through {fmtDay(l.sale.through)}</span>}</span>}
-          {l.also.length > 0 && <span className="small muted" style={{ display: 'block' }}>Also on your list at {l.also.join(' and ')}; split the amount between them.</span>}
-        </span>
-      </label>
-    );
-  };
-
-  return (
-    <>
-      <h2 className="print-only" style={{ margin: 0 }}>{title}</h2>
-      <div className="row no-print" style={{ gap: 8 }}>
-        <button onClick={() => window.print()}>Print</button>
-        <button onClick={share}>Share or copy</button>
-        {checked.length > 0 && <button className="ghost" onClick={() => { setChecked([]); save(CHECKED_KEY, null); }}>Untick all</button>}
-        {msg && <span className="small muted">{msg}</span>}
-      </div>
-      {stores.map(([store, ls]) => (
-        <section key={store} className="card stack" style={{ breakInside: 'avoid' }}>
-          <h2 style={{ margin: 0 }}>{store} <span className="small muted">({ls.length})</span></h2>
-          <div className="list">{ls.map(row)}</div>
-        </section>
-      ))}
-      {anywhere.length > 0 && (
-        <section className="card stack">
-          <h2 style={{ margin: 0 }}>Not on sale: any store <span className="small muted">({anywhere.length})</span></h2>
-          <div className="list">{anywhere.map(row)}</div>
-        </section>
-      )}
-    </>
   );
 }
 
