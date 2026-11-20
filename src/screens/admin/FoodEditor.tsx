@@ -6,6 +6,7 @@ import { blankFood, saveFood, setFoodActive } from '../../data/adminRepo';
 import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
+import { applyLookup, FoodLookup } from './FoodLookup';
 import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod } from '../../domain/types';
 
 const FORMS: FoodForm[] = ['canned', 'pouch', 'dry', 'freeze-dried', 'dehydrated', 'jar', 'box', 'bottle', 'packet', 'bulk'];
@@ -83,6 +84,12 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
       </div>
       {!f.active && <div className="notice">This food is retired. It isn’t used in surveys or new plans.</div>}
       {saved && <div className="notice ok" role="status">{saved}</div>}
+      {isNew ? <FoodLookup initialQuery={f.name} onPick={(r) => setF((x) => applyLookup(x, r))} /> : (
+        <details className="card">
+          <summary><strong>Look up label details</strong> <span className="small muted">(package, nutrition, allergens)</span></summary>
+          <div style={{ marginTop: 12 }}><FoodLookup initialQuery={f.name} onPick={(r) => setF((x) => applyLookup(x, r))} /></div>
+        </details>
+      )}
 
       <section className="card stack">
         <h2>Basics</h2>

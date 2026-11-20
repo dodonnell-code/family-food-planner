@@ -33,6 +33,7 @@ jobs:
           VITE_DEXIE_CLOUD_URL: ${{ vars.DEXIE_CLOUD_URL }}
           # Fingerprints of the emails allowed to sync: gh variable set SYNC_EMAIL_HASHES --body <hash>
           VITE_SYNC_EMAIL_HASHES: ${{ vars.SYNC_EMAIL_HASHES }}
+          VITE_FDC_API_KEY: ${{ vars.FDC_API_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
