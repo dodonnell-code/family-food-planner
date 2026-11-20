@@ -426,6 +426,8 @@ export interface StockEntry {
   item?: string;
   /** Packages (food), gallons (water) or count (equipment). Food can be a fraction of a package. */
   quantity: number;
+  /** Which kind (e.g. "Black beans" for Canned beans): one of the food's kinds, or typed in. */
+  variety?: string;
   /** What was actually bought when it wasn't the plan's package size (e.g. 1 × 160 oz box), for display. */
   bought?: { count: number; size: number; unit: SizeUnit };
   bestBy?: ISODate;

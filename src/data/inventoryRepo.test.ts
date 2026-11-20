@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { PlannerDB, uid } from './db';
-import { addStock, clearStock, consumeStock, undoStockChange } from './inventoryRepo';
+import { addStock, clearStock, consumeStock, undoStockChange, updateStock } from './inventoryRepo';
 
 describe('marking stock used, with undo', () => {
   it('takes from the soonest batch, and Undo puts every batch back exactly', async () => {
@@ -21,5 +21,17 @@ describe('marking stock used, with undo', () => {
     expect(await db.stock.count()).toBe(0);
     await undoStockChange(gone, db);
     expect(await snapshot()).toEqual(start);
+  });
+});
+
+describe('kinds and editing batches', () => {
+  it('saves the kind, and an edit can change kind, amount, date and size', async () => {
+    const db = new PlannerDB(`inv-${uid()}`);
+    const e = await addStock({ kind: 'food', foodId: 'canned-beans', quantity: 3.81, variety: '  Navy beans ', bought: { count: 1, size: 160, unit: 'oz' } }, db);
+    expect(e.variety).toBe('Navy beans');
+    await updateStock(e.id, { variety: 'Pinto beans', quantity: 4, bestBy: '2029-03-01', bought: undefined }, db);
+    const after = (await db.stock.get(e.id))!;
+    expect(after).toMatchObject({ variety: 'Pinto beans', quantity: 4, bestBy: '2029-03-01' });
+    expect(after.bought).toBeUndefined();
   });
 });

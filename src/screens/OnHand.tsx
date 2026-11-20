@@ -36,12 +36,13 @@ export function OnHandList() {
     const groups = new Map<string, StockEntry[]>();
     for (const e of stock) {
       if (e.kind === 'equipment') continue;
-      const k = e.kind === 'water' ? 'water' : `food:${e.foodId}`;
+      const k = e.kind === 'water' ? 'water' : `food:${e.foodId}:${e.variety ?? ''}`;
       groups.set(k, [...(groups.get(k) ?? []), e]);
     }
     const items: Item[] = [...groups].map(([key, entries]) => {
       const water = key === 'water';
-      const food = water ? undefined : foods.find((f) => `food:${f.id}` === key);
+      const food = water ? undefined : foods.find((f) => f.id === entries[0].foodId);
+      const variety = entries[0].variety;
       const statuses = entries.map((e) => ({ e, s: stockStatus(e, t, warn) }));
       const good = statuses.filter((x) => x.s !== 'expired');
       const pool = good.length ? good : statuses;
@@ -49,7 +50,7 @@ export function OnHandList() {
       const status = statuses.some((x) => x.s === 'expired') ? 'expired' : statuses.some((x) => x.s === 'expiring') ? 'expiring' : 'ok';
       return {
         key, water, entries,
-        name: water ? 'Stored water' : food?.name ?? 'Food',
+        name: water ? 'Stored water' : `${food?.name ?? 'Food'}${variety ? `: ${variety}` : ''}`,
         unit: water ? 'gal' : food?.package.description ?? 'pkg',
         total: entries.reduce((s, e) => s + e.quantity, 0),
         bestBy: soonest?.e.bestBy,

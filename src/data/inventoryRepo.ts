@@ -8,13 +8,13 @@ export async function addStock(input: Omit<StockEntry, 'id' | 'addedAt' | 'updat
   if (!(input.quantity > 0) || !Number.isFinite(input.quantity)) throw new Error('Enter a quantity more than 0');
   if (input.kind === 'food' && !input.foodId) throw new Error('Choose a food');
   const ts = now();
-  const e: StockEntry = { ...input, bestBy: input.bestBy || undefined, note: input.note?.trim() || undefined, id: uid(), addedAt: ts, updatedAt: ts };
+  const e: StockEntry = { ...input, bestBy: input.bestBy || undefined, note: input.note?.trim() || undefined, variety: input.variety?.trim() || undefined, id: uid(), addedAt: ts, updatedAt: ts };
   await database.stock.add(e);
   await audit('stock.add', { stockId: e.id, foodId: e.foodId ?? '' }, `${e.kind} ${e.quantity}`, database);
   return e;
 }
 
-export async function updateStock(id: ID, patch: Partial<Pick<StockEntry, 'quantity' | 'bestBy' | 'note'>>, database: PlannerDB = defaultDb) {
+export async function updateStock(id: ID, patch: Partial<Pick<StockEntry, 'quantity' | 'bestBy' | 'note' | 'variety' | 'bought'>>, database: PlannerDB = defaultDb) {
   if (patch.quantity !== undefined && (!Number.isFinite(patch.quantity) || patch.quantity < 0)) throw new Error('Quantity can’t be negative');
   if (patch.quantity === 0) return removeStock(id, database);
   await database.stock.update(id, { ...patch, updatedAt: now() });
