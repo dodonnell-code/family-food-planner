@@ -19,6 +19,27 @@ export function useStartSurvey() {
 
 interface Ask { memberId: string; name: string; count: number; groups: string[] }
 
+interface MenuLink { to: string; label: string; end?: boolean }
+const MAIN: MenuLink[] = [
+  { to: '/admin/inventory', label: 'Inventory' },
+  { to: '/admin', label: 'Home', end: true },
+  { to: '/admin/plan', label: 'Plan' },
+  { to: '/admin/deals', label: 'Deals' },
+  { to: '/admin/reports', label: 'Reports' },
+  { to: '/admin/catalog', label: 'Catalog' },
+  { to: '/admin/review', label: 'Review' },
+];
+/** Less-used pages: under "More" on larger screens, under a "More" heading in the phone menu. */
+const MORE: MenuLink[] = [
+  { to: '/admin/members', label: 'Members' },
+  { to: '/admin/settings', label: 'Settings' },
+  { to: '/admin/backup', label: 'Backup & sync' },
+];
+function currentLabel(pathname: string): string {
+  if (pathname === '/admin' || pathname === '/admin/') return 'Home';
+  return [...MAIN, ...MORE].find((l) => l.to !== '/admin' && pathname.startsWith(l.to))?.label ?? '';
+}
+
 export default function AdminLayout() {
   const { isAdmin, lock } = useSession();
   const nav = useNavigate();
@@ -27,8 +48,20 @@ export default function AdminLayout() {
   const { pathname } = useLocation();
   // Set by the Lock button, so locking goes to the welcome screen instead of the passphrase screen.
   const locking = useRef(false);
-  // On phones the menu is one sideways-scrolling row: keep the current page's tab in view.
-  useEffect(() => { document.querySelector('.topbar nav a.active')?.scrollIntoView({ block: 'nearest', inline: 'center' }); }, [pathname]);
+  const [menuOpen, setMenuOpen] = useState(false); // phone menu
+  const [moreOpen, setMoreOpen] = useState(false); // "More" on larger screens
+  const moreRef = useRef<HTMLDivElement>(null);
+  // Tapping a link closes the menus.
+  const closeOnLink = (e: React.MouseEvent) => { if ((e.target as HTMLElement).closest('a')) { setMenuOpen(false); setMoreOpen(false); } };
+  // Close "More" on a click outside it; Escape closes either menu.
+  useEffect(() => {
+    if (!moreOpen && !menuOpen) return;
+    const onDown = (e: PointerEvent) => { if (moreOpen && !moreRef.current?.contains(e.target as Node)) setMoreOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setMoreOpen(false); setMenuOpen(false); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [moreOpen, menuOpen]);
 
   async function go(memberId: string, onlyNew = false) {
     setAsk(null);
@@ -56,20 +89,32 @@ export default function AdminLayout() {
     <StartSurvey.Provider value={start}>
       <header className="topbar no-print">
         <div className="inner">
-          <nav aria-label="Admin">
-            <NavLink to="/admin/inventory">Inventory</NavLink>
-            <NavLink to="/admin" end>Home</NavLink>
-            <NavLink to="/admin/members">Members</NavLink>
-            <NavLink to="/admin/plan">Plan</NavLink>
-            <NavLink to="/admin/deals">Deals</NavLink>
-            <NavLink to="/admin/reports">Reports</NavLink>
-            <NavLink to="/admin/catalog">Catalog</NavLink>
-            <NavLink to="/admin/settings">Settings</NavLink>
-            <NavLink to="/admin/backup">Backup</NavLink>
-            <NavLink to="/admin/review">Review{attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
+          {/* Phones: Menu button + the current page's name. */}
+          <button className="ghost menu-button" aria-expanded={menuOpen} aria-controls="admin-menu" onClick={() => setMenuOpen((o) => !o)}>
+            <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{attentionCount ? <span className="badge warn">{attentionCount}</span> : null}
+          </button>
+          <span className="menu-current">{currentLabel(pathname)}</span>
+          {/* Larger screens: one line, with the less-used pages under More. */}
+          <nav aria-label="Admin" className="nav-wide">
+            {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
+            <div className="more" ref={moreRef}>
+              <button type="button" className={`ghost more-button${MORE.some((l) => pathname.startsWith(l.to)) ? ' active' : ''}`} aria-expanded={moreOpen} aria-haspopup="true" onClick={() => setMoreOpen((o) => !o)}>More ▾</button>
+              {moreOpen && (
+                <div className="more-menu" role="menu" onClick={closeOnLink}>
+                  {MORE.map((l) => <NavLink key={l.to} to={l.to} role="menuitem">{l.label}</NavLink>)}
+                </div>
+              )}
+            </div>
           </nav>
           <button className="ghost" onClick={() => { locking.current = true; nav('/welcome', { replace: true }); lock(); }}>Lock</button>
         </div>
+        {menuOpen && (
+          <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>
+            {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
+            <div className="menu-group" aria-hidden>More</div>
+            {MORE.map((l) => <NavLink key={l.to} to={l.to}>{l.label}</NavLink>)}
+          </nav>
+        )}
       </header>
       <main className="page">
         <Outlet />

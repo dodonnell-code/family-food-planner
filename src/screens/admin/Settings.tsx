@@ -4,6 +4,7 @@ import { useSession } from '../../app/session';
 import { db } from '../../data/db';
 import { saveFieldDefinition, updateHousehold } from '../../data/adminRepo';
 import { getDeviceOwner, setDeviceOwner } from '../../data/device';
+import { setTheme, THEMES, useTheme } from '../../app/theme';
 import type { CustomFieldDefinition, CustomFieldType, Household, PlanningDefaults } from '../../domain/types';
 
 export default function Settings() {
@@ -12,6 +13,7 @@ export default function Settings() {
   return (
     <div className="stack">
       <h1>Settings</h1>
+      <Appearance />
       <PlanningForm key={hh.id} hh={hh} />
       <CustomFields />
     </div>
@@ -242,5 +244,21 @@ function DeviceOwner() {
       </label>
       <span className="small muted">On a shared device, an adult picks who takes a survey. On someone’s own device, the app opens on their survey and they can take or retake it without the Admin passphrase. Only their own survey. Everything else still needs the passphrase. Applies to this device only and takes effect right away.</span>
     </div>
+  );
+}
+
+/** Per-device look. Applies right away; not part of the household settings. */
+function Appearance() {
+  const theme = useTheme();
+  return (
+    <section className="card stack">
+      <h2 style={{ margin: 0 }}>Appearance</h2>
+      <div className="row" role="radiogroup" aria-label="Appearance">
+        {THEMES.map((t) => (
+          <button key={t.value} type="button" role="radio" aria-checked={theme === t.value} className={theme === t.value ? 'primary' : ''} onClick={() => setTheme(t.value)}>{t.label}</button>
+        ))}
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>“Match device” follows the phone or computer’s own light/dark setting. Applies to this device only.</p>
+    </section>
   );
 }

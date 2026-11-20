@@ -123,7 +123,7 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
                 const disabled = list === 'mayContain' && f.allergens.contains.includes(a.code);
                 return (
                   <button type="button" key={a.code} aria-pressed={on} disabled={disabled} onClick={() => toggleAllergen(list, a.code)}
-                    style={{ minHeight: 44, borderRadius: 999, padding: '0 14px', background: on ? (list === 'contains' ? 'var(--danger)' : 'var(--warn)') : 'var(--surface)', color: on ? '#fff' : 'var(--text)', borderColor: on ? 'transparent' : 'var(--border)' }}>
+                    style={{ minHeight: 44, borderRadius: 999, padding: '0 14px', background: on ? (list === 'contains' ? 'var(--danger)' : 'var(--warn)') : 'var(--surface)', color: on ? 'var(--on-strong)' : 'var(--text)', borderColor: on ? 'transparent' : 'var(--border)' }}>
                     {on ? '✓ ' : ''}{a.label}
                   </button>
                 );

@@ -19,7 +19,7 @@
 }
 .rating .emoji { font-size: 1.7rem; line-height: 1; }
 .rating.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.rating.blocked.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+.rating.blocked.on { background: var(--danger); border-color: var(--danger); color: var(--on-strong); }
 
 /* "Which kinds do you like?" tiles */
 .kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }

@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../data/db';
 import { useSession } from '../app/session';
-import { Avatar, firstName } from '../app/ui';
+import { Avatar, firstName, ThemeButton } from '../app/ui';
 import { startOrResumeSurvey } from '../data/repo';
 import { getDeviceOwner, ownSurveyState } from '../data/device';
 import type { Member } from '../domain/types';
@@ -58,6 +58,7 @@ export default function Handoff() {
         {hasVault && (
           <Link to="/unlock" className="btn ghost">Admin</Link>
         )}
+        <div><ThemeButton /></div>
       </div>
     </main>
   );
@@ -94,6 +95,7 @@ function PersonalWelcome({ owner, justFinished }: { owner: Member; justFinished:
           </>
         )}
         <Link to="/unlock" className="btn ghost">Admin</Link>
+        <div><ThemeButton /></div>
       </div>
     </main>
   );

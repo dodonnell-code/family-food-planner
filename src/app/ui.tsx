@@ -1,3 +1,4 @@
+import { toggleTheme, useTheme } from './theme';
 import type { Allergen, Member, RestrictionType } from '../domain/types';
 
 export const MEMBER_COLORS = ['#2f6b4f', '#3b5ba5', '#a0522d', '#7a4ca0', '#b03a5b', '#2a7f8f', '#8a6d1d', '#55606b'];
@@ -103,3 +104,14 @@ const toDate = (iso: string) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${is
 export const fmtDate = (iso?: string) => (iso ? toDate(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
 /** "Sat, Nov 21": for dates in the coming days. */
 export const fmtDay = (iso: string) => toDate(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+/** One-tap light/dark switch for screens anyone can see (welcome, personal device). */
+export function ThemeButton() {
+  const theme = useTheme(); // re-render after a switch
+  const dark = theme === 'dark' || (theme === 'system' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+  return (
+    <button type="button" className="ghost small" onClick={toggleTheme} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+      {dark ? '☀️ Light mode' : '🌙 Dark mode'}
+    </button>
+  );
+}

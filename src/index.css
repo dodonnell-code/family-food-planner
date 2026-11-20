@@ -12,6 +12,9 @@
   --warn-soft: #fbedd5;
   --danger: #a3262a;
   --danger-soft: #f8dfdf;
+  /* Text on a solid danger/warn background. */
+  --on-strong: #ffffff;
+  color-scheme: light;
   --radius: 14px;
   --tap: 52px;
   font-family: ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -21,8 +24,10 @@
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
 }
+/* Dark colors: from the device setting (System), or chosen in Settings › Appearance (data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #151816;
     --surface: #1e2320;
     --surface-2: #262c28;
@@ -36,7 +41,25 @@
     --warn-soft: #3a2e1a;
     --danger: #f08a8a;
     --danger-soft: #3d2222;
+    --on-strong: #151816;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #151816;
+  --surface: #1e2320;
+  --surface-2: #262c28;
+  --text: #e9ece8;
+  --muted: #a3aca5;
+  --border: #38403a;
+  --accent: #6fbf95;
+  --accent-ink: #0d1a13;
+  --accent-soft: #233a2e;
+  --warn: #f0b45a;
+  --warn-soft: #3a2e1a;
+  --danger: #f08a8a;
+  --danger-soft: #3d2222;
+  --on-strong: #151816;
 }
 
 * { box-sizing: border-box; }
@@ -102,15 +125,27 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
 .topbar nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .topbar nav a { padding: 10px 14px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; }
 .topbar nav a.active { background: var(--accent-soft); color: var(--accent); }
-/* Phones: one row that scrolls sideways (instead of five rows of links), Lock always visible. */
-@media (max-width: 700px) {
-  .topbar .inner { flex-wrap: nowrap; padding: 6px 8px 6px 16px; }
-  .topbar nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; min-width: 0; }
-  .topbar nav::-webkit-scrollbar { display: none; }
-  .topbar nav a { flex: none; white-space: nowrap; padding: 10px 12px; }
-  .topbar .inner > button { flex: none; }
-  .page { padding: 16px 16px 48px; }
+/* Admin menu: one line on larger screens ("More" holds the less-used pages); Menu button on phones. */
+.topbar nav.nav-wide { flex-wrap: nowrap; align-items: center; }
+.topbar nav a, .more-button { white-space: nowrap; }
+.more { position: relative; }
+.more-button { padding: 10px 14px; font-weight: 600; }
+.more-button.active { background: var(--accent-soft); color: var(--accent); }
+.more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 190px; display: flex; flex-direction: column; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); }
+.more-menu a { padding: 12px 14px; border-radius: 8px; text-decoration: none; color: var(--text); font-weight: 600; }
+.more-menu a.active { background: var(--accent-soft); color: var(--accent); }
+.menu-button, .menu-current, .menu-panel { display: none; }
+@media (max-width: 860px) {
+  .topbar .inner { flex-wrap: nowrap; padding: 6px 8px 6px 12px; }
+  .topbar nav.nav-wide { display: none; }
+  .menu-button { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
+  .menu-current { display: block; flex: 1; min-width: 0; font-weight: 700; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-panel { display: flex; flex-direction: column; padding: 4px 12px 12px; max-height: calc(100dvh - 64px); overflow-y: auto; border-top: 1px solid var(--border); }
+  .menu-panel a { padding: 14px 12px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 1.05rem; }
+  .menu-panel a.active { background: var(--accent-soft); color: var(--accent); }
+  .menu-group { padding: 12px 12px 4px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-top: 1px solid var(--border); margin-top: 6px; }
 }
+@media (max-width: 700px) { .page { padding: 16px 16px 48px; } }
 /* Form controls never push the page wider than the screen. */
 select { max-width: 100%; }
 
