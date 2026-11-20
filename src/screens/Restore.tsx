@@ -93,7 +93,7 @@ export default function Restore() {
         <h1>Restore from a backup</h1>
         {hasVault
           ? <div className="notice">This device is already set up. To replace its data, unlock Admin and use Backup.</div>
-          : <RestorePanel replacing={false} onDone={() => nav('/admin/inventory', { replace: true })} />}
+          : <RestorePanel replacing={false} onDone={() => nav('/admin/dashboard', { replace: true })} />}
         <Link to="/" className="small">Back</Link>
       </div>
     </main>

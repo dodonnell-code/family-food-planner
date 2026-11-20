@@ -149,7 +149,7 @@ export default function LinkDevice() {
         <h1>Link to your family’s data</h1>
         {hasVault
           ? <div className="notice">This device is already set up. To link it, unlock Admin and use Backup › Sync across devices.</div>
-          : <LinkFlow replacing={false} onDone={() => nav('/admin/inventory', { replace: true })} />}
+          : <LinkFlow replacing={false} onDone={() => nav('/admin/dashboard', { replace: true })} />}
         <Link to="/welcome" className="small">Back</Link>
       </div>
     </main>

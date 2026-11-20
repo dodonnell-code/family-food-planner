@@ -15,7 +15,7 @@ export default function Setup() {
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  if (hasVault && !recoveryKey) return <Navigate to={isAdmin ? '/admin/inventory' : '/welcome'} replace />;
+  if (hasVault && !recoveryKey) return <Navigate to={isAdmin ? '/admin/dashboard' : '/welcome'} replace />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +49,7 @@ export default function Setup() {
             <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
             I have saved the recovery key somewhere safe
           </label>
-          <button className="primary no-print" disabled={!saved} onClick={() => nav('/admin/inventory', { replace: true })}>Continue</button>
+          <button className="primary no-print" disabled={!saved} onClick={() => nav('/admin/dashboard', { replace: true })}>Continue</button>
         </div>
       </main>
     );

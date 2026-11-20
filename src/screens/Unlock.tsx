@@ -6,7 +6,7 @@ export default function Unlock() {
   const { hasVault, isAdmin, remembered, resume, unlock, recover } = useSession();
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get('next') === 'start' ? '/admin/members?pick=1' : '/admin/inventory';
+  const next = params.get('next') === 'start' ? '/admin/members?pick=1' : '/admin/dashboard';
   const [mode, setMode] = useState<'pass' | 'recover'>('pass');
   const [pass, setPass] = useState('');
   const [rk, setRk] = useState('');

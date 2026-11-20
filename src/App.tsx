@@ -20,7 +20,8 @@ import Inventory from './screens/admin/Inventory';
 import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
 import LinkDevice from './screens/LinkDevice';
-import OnHand, { OnHandList } from './screens/OnHand';
+import Dashboard from './screens/admin/Dashboard';
+import OnHand from './screens/OnHand';
 import { initSync } from './data/cloud';
 import { getDeviceOwner } from './data/device';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -35,7 +36,7 @@ function Start() {
   const { hasVault } = useSession();
   const owner = useLiveQuery(async () => (await getDeviceOwner()) ?? null, []);
   if (owner === undefined) return null;
-  return <Navigate to={hasVault && !owner ? '/admin/inventory' : '/welcome'} replace />;
+  return <Navigate to={hasVault && !owner ? '/admin/dashboard' : '/welcome'} replace />;
 }
 
 function Routed() {
@@ -54,7 +55,8 @@ function Routed() {
       <Route path="/restore" element={<Restore />} />
       <Route path="/survey/:memberId" element={<Survey />} />
       <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<Navigate to="inventory" replace />} />
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="members" element={<Members />} />
         <Route path="members/:id" element={<MemberDetail />} />
         <Route path="review" element={<Review />} />
@@ -62,7 +64,7 @@ function Routed() {
         <Route path="catalog/:id" element={<FoodEditor />} />
         <Route path="plan" element={<Plan />} />
         <Route path="inventory" element={<Inventory />} />
-        <Route path="on-hand" element={<div className="stack"><h1 style={{ margin: 0 }}>On hand</h1><OnHandList /></div>} />
+        <Route path="on-hand" element={<Navigate to="/admin/inventory?show=have" replace />} />
         <Route path="deals" element={<Deals />} />
         <Route path="reports" element={<Reports />} />
         <Route path="backup" element={<Backup />} />
