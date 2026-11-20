@@ -401,7 +401,7 @@ function PrivateNotesCard({ member, onSaved }: { member: Member; onSaved: () => 
   return (
     <section className="card stack">
       <h2>Private notes</h2>
-      <p className="small muted">Anything else worth knowing for planning that doesn't fit above. Encrypted on this iPad and excluded from non-detailed reports.</p>
+      <p className="small muted">Anything else worth knowing for planning that doesn't fit above. Encrypted on this device and excluded from non-detailed reports.</p>
       <textarea value={text ?? ''} disabled={text === null} onChange={(e) => setText(e.target.value)} />
       <div><button onClick={save} disabled={text === null}>Save note</button></div>
     </section>

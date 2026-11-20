@@ -56,7 +56,7 @@ export async function snapshotData(database: PlannerDB = defaultDb): Promise<Bac
  */
 export async function createBackup(dek: CryptoKey, database: PlannerDB = defaultDb) {
   const vault = (await database.meta.get('vault'))?.value as KeyVault | undefined;
-  if (!vault) throw new Error('Admin is not set up on this iPad');
+  if (!vault) throw new Error('Admin is not set up on this device');
   const data = await snapshotData(database);
   const createdAt = now();
   const envelope: BackupEnvelope = {

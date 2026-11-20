@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSession } from '../app/session';
 import { fmtDate } from '../app/ui';
+import { unlinkDevice } from '../data/cloud';
 import { openBackup, readEnvelope, restoreBackup, TABLE_LABELS, type BackupCounts, type BackupData, type BackupEnvelope } from '../data/backup';
 
-/** Restore flow, used on a fresh iPad (/restore) and from Admin › Backup. */
+/** Restore flow, used on a fresh device (/restore) and from Admin › Backup. */
 export function RestorePanel({ replacing, onDone }: { replacing: boolean; onDone: () => void }) {
   const { adopt } = useSession();
   const [env, setEnv] = useState<BackupEnvelope>();
@@ -34,6 +35,7 @@ export function RestorePanel({ replacing, onDone }: { replacing: boolean; onDone
     if (!env || !opened) return;
     setErr(''); setBusy(true);
     try {
+      await unlinkDevice();
       await restoreBackup(env, opened.data);
       adopt(opened.dek);
       onDone();
@@ -69,7 +71,7 @@ export function RestorePanel({ replacing, onDone }: { replacing: boolean; onDone
           </ul>
           {replacing && (
             <>
-              <div className="notice danger">Restoring <strong>replaces everything on this iPad</strong> with the backup from {fmtDate(env.createdAt)}. Anything added since then is lost. Afterwards the Admin passphrase and recovery key are the ones from the backup.</div>
+              <div className="notice danger">Restoring <strong>replaces everything on this device</strong> with the backup from {fmtDate(env.createdAt)}. Anything added since then is lost. Afterwards the Admin passphrase and recovery key are the ones from the backup, and this device stops syncing (link it again afterwards if you want).</div>
               <label style={{ maxWidth: 320 }}>Type REPLACE to confirm<input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" /></label>
             </>
           )}
@@ -90,8 +92,8 @@ export default function Restore() {
       <div className="card stack" style={{ maxWidth: 560, width: '100%' }}>
         <h1>Restore from a backup</h1>
         {hasVault
-          ? <div className="notice">This iPad is already set up. To replace its data, unlock Admin and use Backup.</div>
-          : <RestorePanel replacing={false} onDone={() => nav('/admin', { replace: true })} />}
+          ? <div className="notice">This device is already set up. To replace its data, unlock Admin and use Backup.</div>
+          : <RestorePanel replacing={false} onDone={() => nav('/admin/inventory', { replace: true })} />}
         <Link to="/" className="small">Back</Link>
       </div>
     </main>

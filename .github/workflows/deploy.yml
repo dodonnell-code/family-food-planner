@@ -29,6 +29,8 @@ jobs:
         env:
           # The site is served from https://<user>.github.io/<repo>/
           BASE_PATH: /${{ github.event.repository.name }}/
+          # Sync across devices (README › Sync). Set with: gh variable set DEXIE_CLOUD_URL --body <url>
+          VITE_DEXIE_CLOUD_URL: ${{ vars.DEXIE_CLOUD_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

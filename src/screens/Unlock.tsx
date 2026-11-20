@@ -6,7 +6,7 @@ export default function Unlock() {
   const { hasVault, isAdmin, remembered, resume, unlock, recover } = useSession();
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get('next') === 'start' ? '/admin?pick=1' : '/admin';
+  const next = params.get('next') === 'start' ? '/admin?pick=1' : '/admin/inventory';
   const [mode, setMode] = useState<'pass' | 'recover'>('pass');
   const [pass, setPass] = useState('');
   const [rk, setRk] = useState('');
@@ -67,7 +67,7 @@ export default function Unlock() {
           {msg && <div className="notice danger" role="alert">{msg}{waitSec > 0 && ` (${waitSec}s)`}</div>}
           <button className={remembered ? '' : 'primary'} disabled={busy || waitSec > 0 || !pass}>{busy ? 'Checking…' : 'Unlock'}</button>
           <div className="spread">
-            <Link to="/" className="btn ghost">Back</Link>
+            <Link to="/welcome" className="btn ghost">Back</Link>
             <button type="button" className="ghost small" onClick={() => { setMode('recover'); setMsg(''); }}>Forgot passphrase?</button>
           </div>
         </form>

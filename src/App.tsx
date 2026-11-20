@@ -20,8 +20,16 @@ import Backup from './screens/admin/Backup';
 import Inventory from './screens/admin/Inventory';
 import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
+import LinkDevice from './screens/LinkDevice';
+import { initSync } from './data/cloud';
 import Survey from './screens/survey/Survey';
 import UpdatePrompt from './app/UpdatePrompt';
+
+/** The app opens on Inventory (unlocking Admin first if needed); new devices start at the welcome screen. */
+function Start() {
+  const { hasVault } = useSession();
+  return <Navigate to={hasVault ? '/admin/inventory' : '/welcome'} replace />;
+}
 
 function Routed() {
   const { ready } = useSession();
@@ -30,7 +38,9 @@ function Routed() {
     <>
     <UpdatePrompt />
     <Routes>
-      <Route path="/" element={<Handoff />} />
+      <Route path="/" element={<Start />} />
+      <Route path="/welcome" element={<Handoff />} />
+      <Route path="/link" element={<LinkDevice />} />
       <Route path="/setup" element={<Setup />} />
       <Route path="/unlock" element={<Unlock />} />
       <Route path="/restore" element={<Restore />} />
@@ -74,7 +84,7 @@ export default function App() {
   useEffect(() => {
     if (!secure) return;
     ensureInitialized()
-      .then((hh) => setAutoLock(hh.settings.autoLockMinutes))
+      .then((hh) => { setAutoLock(hh.settings.autoLockMinutes); initSync().catch(() => {}); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     requestPersistentStorage();
   }, [secure]);
@@ -84,7 +94,7 @@ export default function App() {
       <StartupProblem title="This address isn't secure">
         <p>The planner encrypts private information, and browsers only allow that on secure (HTTPS) addresses or on <code>localhost</code>.</p>
         <p>You opened <strong>{window.location.host}</strong>. If you are on the computer running the app, open{' '}
-          <a href={`http://localhost:${window.location.port}/`}>http://localhost:{window.location.port}</a> instead. On an iPad, use the installed HTTPS version.</p>
+          <a href={`http://localhost:${window.location.port}/`}>http://localhost:{window.location.port}</a> instead. On a phone or tablet, use the installed HTTPS version.</p>
       </StartupProblem>
     );
   }

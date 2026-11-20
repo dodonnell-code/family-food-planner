@@ -23,6 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# Dexie Cloud credentials from `npx dexie-cloud create` (the .key file holds a client secret)
+dexie-cloud.key
+dexie-cloud.json
+
 # Never commit real family data or backups
 *.ffpbackup
 *backup*.json

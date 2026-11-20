@@ -103,7 +103,7 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
   const days = household?.settings.backupReminderDays ?? 14;
   if (active.length > 0 && (!last || Date.now() - Date.parse(last) > days * 86_400_000)) {
     items.push({ id: 'backup', severity: 'medium', link: '/admin/backup', title: last ? 'Backup overdue' : 'No backup yet',
-      detail: 'iPad browser storage can be cleared. Make an encrypted backup and keep it off the iPad.' });
+      detail: 'Browser storage can be cleared. Make an encrypted backup and keep it off this device.' });
   }
 
   const order: Record<AttentionSeverity, number> = { high: 0, medium: 1, low: 2 };

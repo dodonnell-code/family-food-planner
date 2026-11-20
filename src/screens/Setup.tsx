@@ -15,7 +15,7 @@ export default function Setup() {
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  if (hasVault && !recoveryKey) return <Navigate to={isAdmin ? '/admin' : '/'} replace />;
+  if (hasVault && !recoveryKey) return <Navigate to={isAdmin ? '/admin/inventory' : '/welcome'} replace />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +41,7 @@ export default function Setup() {
           <h1>Save your recovery key</h1>
           <p>If you forget the Admin passphrase, this key is the <strong>only</strong> way to get back in and read allergy and health notes. It will not be shown again.</p>
           <div className="recovery-key" aria-label="Recovery key">{recoveryKey}</div>
-          <p className="small muted">Print it or write it down and keep it somewhere safe, away from the iPad (for example, with your important papers).</p>
+          <p className="small muted">Print it or write it down and keep it somewhere safe, away from this device (for example, with your important papers).</p>
           <div className="row no-print">
             <button onClick={() => window.print()}>Print</button>
           </div>
@@ -49,7 +49,7 @@ export default function Setup() {
             <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
             I have saved the recovery key somewhere safe
           </label>
-          <button className="primary no-print" disabled={!saved} onClick={() => nav('/admin', { replace: true })}>Continue to Admin</button>
+          <button className="primary no-print" disabled={!saved} onClick={() => nav('/admin/inventory', { replace: true })}>Continue</button>
         </div>
       </main>
     );
@@ -58,7 +58,7 @@ export default function Setup() {
   return (
     <main className="center-page">
       <form className="card stack" style={{ maxWidth: 520, width: '100%' }} onSubmit={submit}>
-        <h1>Set up this iPad</h1>
+        <h1>Set up this device</h1>
         <p className="muted">Choose an Admin passphrase. It unlocks member profiles, results and backups, and it encrypts sensitive notes such as allergies and health information.</p>
         <label>Admin passphrase
           <input type="password" autoComplete="new-password" value={p1} onChange={(e) => setP1(e.target.value)} autoFocus />
@@ -68,7 +68,7 @@ export default function Setup() {
         </label>
         {err && <div className="notice danger" role="alert">{err}</div>}
         <button className="primary" disabled={busy}>{busy ? 'Setting up…' : 'Create passphrase'}</button>
-        <p className="small muted" style={{ margin: 0 }}>Moving from another iPad, or starting over? <Link to="/restore">Restore from a backup</Link> instead.</p>
+        <p className="small muted" style={{ margin: 0 }}>Already using the planner on another device? <Link to="/link">Link this device</Link> to share its data. Or <Link to="/restore">restore from a backup</Link>.</p>
       </form>
     </main>
   );

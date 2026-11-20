@@ -23,10 +23,13 @@ export default function Handoff() {
       <div className="stack" style={{ maxWidth: 560, width: '100%', textAlign: 'center' }}>
         {justFinished && <div className="notice ok" role="status">Thanks! Your answers are saved and private.</div>}
         <h1>Family Emergency Food Planner</h1>
-        <p className="muted">{justFinished ? 'Please hand the iPad to the next person.' : 'Ready for the next person.'}</p>
+        <p className="muted">{justFinished ? 'Please hand the device to the next person.' : 'Ready for the next person.'}</p>
 
         {!hasVault ? (
-          <Link to="/setup" className="btn primary big">Set up this iPad</Link>
+          <>
+            <Link to="/setup" className="btn primary big">Set up this device</Link>
+            <Link to="/link" className="btn big">Link to another device</Link>
+          </>
         ) : (
           <>
             <button className="primary big" onClick={() => nav('/unlock?next=start')}>Start a survey</button>

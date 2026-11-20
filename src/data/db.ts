@@ -21,6 +21,8 @@ import type {
 /** Local IndexedDB store (scope §10: structured storage, not a localStorage blob). */
 export class PlannerDB extends Dexie {
   households!: EntityTable<Household, 'id'>;
+  // @ts-expect-error dexie-cloud-addon declares a `members` table on every Dexie. This database
+  // isn't synced by the addon (sync.ts mirrors it into a separate one), so ours is the real type.
   members!: EntityTable<Member, 'id'>;
   restrictions!: EntityTable<MemberRestriction, 'id'>;
   customFields!: EntityTable<CustomFieldDefinition, 'id'>;

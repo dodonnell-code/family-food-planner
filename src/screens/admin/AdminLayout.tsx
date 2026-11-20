@@ -1,5 +1,5 @@
-import { createContext, useContext, useState } from 'react';
-import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from '../../app/session';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
@@ -24,6 +24,9 @@ export default function AdminLayout() {
   const nav = useNavigate();
   const attentionCount = useLiveQuery(async () => (await computeAttention()).length, []);
   const [ask, setAsk] = useState<Ask | null>(null);
+  const { pathname } = useLocation();
+  // On phones the menu is one sideways-scrolling row: keep the current page's tab in view.
+  useEffect(() => { document.querySelector('.topbar nav a.active')?.scrollIntoView({ block: 'nearest', inline: 'center' }); }, [pathname]);
 
   async function go(memberId: string, onlyNew = false) {
     setAsk(null);
@@ -52,10 +55,10 @@ export default function AdminLayout() {
       <header className="topbar no-print">
         <div className="inner">
           <nav aria-label="Admin">
+            <NavLink to="/admin/inventory">Inventory</NavLink>
             <NavLink to="/admin" end>Home</NavLink>
             <NavLink to="/admin/members">Members</NavLink>
             <NavLink to="/admin/plan">Plan</NavLink>
-            <NavLink to="/admin/inventory">Inventory</NavLink>
             <NavLink to="/admin/deals">Deals</NavLink>
             <NavLink to="/admin/reports">Reports</NavLink>
             <NavLink to="/admin/catalog">Catalog</NavLink>
@@ -63,7 +66,7 @@ export default function AdminLayout() {
             <NavLink to="/admin/backup">Backup</NavLink>
             <NavLink to="/admin/review">Review{attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
           </nav>
-          <button className="ghost" onClick={() => { lock(); nav('/', { replace: true }); }}>Lock</button>
+          <button className="ghost" onClick={() => { lock(); nav('/welcome', { replace: true }); }}>Lock</button>
         </div>
       </header>
       <main className="page">

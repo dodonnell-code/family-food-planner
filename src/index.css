@@ -102,6 +102,17 @@ input[type='checkbox'] { width: 26px; height: 26px; min-height: 0; accent-color:
 .topbar nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .topbar nav a { padding: 10px 14px; border-radius: 10px; text-decoration: none; color: var(--text); font-weight: 600; }
 .topbar nav a.active { background: var(--accent-soft); color: var(--accent); }
+/* Phones: one row that scrolls sideways (instead of five rows of links), Lock always visible. */
+@media (max-width: 700px) {
+  .topbar .inner { flex-wrap: nowrap; padding: 6px 8px 6px 16px; }
+  .topbar nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; min-width: 0; }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { flex: none; white-space: nowrap; padding: 10px 12px; }
+  .topbar .inner > button { flex: none; }
+  .page { padding: 16px 16px 48px; }
+}
+/* Form controls never push the page wider than the screen. */
+select { max-width: 100%; }
 
 .avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; flex: none; }
 .list { display: flex; flex-direction: column; }

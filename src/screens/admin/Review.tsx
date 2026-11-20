@@ -225,5 +225,5 @@ function Value({ v }: { v: DisplayValue }) {
     );
   }, [v, dek]);
   if (v.kind === 'text') return <>{v.text}</>;
-  return <span title="Encrypted on this iPad">🔒 {text ?? '…'}</span>;
+  return <span title="Encrypted on this device">🔒 {text ?? '…'}</span>;
 }

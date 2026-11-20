@@ -76,7 +76,7 @@ export default function Survey() {
   }, [memberId]);
 
   if (!data) return null;
-  if (!data.member || !data.survey) return <Navigate to="/" replace />;
+  if (!data.member || !data.survey) return <Navigate to="/welcome" replace />;
   return <Wizard key={data.survey.id} member={data.member} survey={data.survey} foods={data.foods} restrictions={data.restrictions} answers={data.answers} />;
 }
 
@@ -115,7 +115,7 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
             <div className="small muted">{name}’s survey · step {step + 1} of {STEPS.length}</div>
             <strong>{stepTitle}</strong>
           </div>
-          <button className="ghost" onClick={() => nav('/', { replace: true })}>Save &amp; exit</button>
+          <button className="ghost" onClick={() => nav('/welcome', { replace: true })}>Save &amp; exit</button>
         </div>
         <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div style={{ width: `${pct}%` }} /></div>
       </header>
@@ -130,7 +130,7 @@ function Wizard({ member, survey, foods, restrictions, answers }: {
         {cur.kind === 'restrictions' && <RestrictionsStep survey={survey} member={member} restrictions={restrictions} />}
         {cur.kind === 'open' && <OpenStep survey={survey} />}
         {cur.kind === 'review' && <ReviewStep survey={survey} steps={STEPS} foods={asked} restrictions={restrictions} answers={answerMap}
-          onSubmit={async () => { await submitSurvey(survey.id); nav('/?done=1', { replace: true }); }} onJump={go} />}
+          onSubmit={async () => { await submitSurvey(survey.id); nav('/welcome?done=1', { replace: true }); }} onJump={go} />}
         </div>
       </main>
 
