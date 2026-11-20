@@ -72,7 +72,7 @@ export async function createBackup(dek: CryptoKey, database: PlannerDB = default
   return { text, filename, counts, createdAt };
 }
 
-/** Record that a backup was saved (drives the reminder on Home/Review). */
+/** Record that a backup was saved (drives the reminder on Review). */
 export async function markBackedUp(at: string, database: PlannerDB = defaultDb) {
   const hh = await database.households.toCollection().first();
   if (hh) await database.households.update(hh.id, { settings: { ...hh.settings, lastBackupAt: at } });

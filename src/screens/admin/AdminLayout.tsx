@@ -6,6 +6,7 @@ import { db } from '../../data/db';
 import { inProgressSurvey, newSurveyQuestions, startOrResumeSurvey } from '../../data/repo';
 import { computeAttention } from '../../domain/attention';
 import { CATEGORY_LABELS } from './Catalog';
+import { surveysToDo } from './memberStatus';
 
 const StartSurvey = createContext<(memberId: string) => Promise<void>>(async () => {});
 
@@ -22,7 +23,6 @@ interface Ask { memberId: string; name: string; count: number; groups: string[] 
 interface MenuLink { to: string; label: string; end?: boolean }
 const MAIN: MenuLink[] = [
   { to: '/admin/inventory', label: 'Inventory' },
-  { to: '/admin', label: 'Home', end: true },
   { to: '/admin/plan', label: 'Plan' },
   { to: '/admin/deals', label: 'Deals' },
 ];
@@ -36,14 +36,14 @@ const ADMIN: MenuLink[] = [
   { to: '/admin/backup', label: 'Backup & sync' },
 ];
 function currentLabel(pathname: string): string {
-  if (pathname === '/admin' || pathname === '/admin/') return 'Home';
-  return [...MAIN, ...ADMIN].find((l) => l.to !== '/admin' && pathname.startsWith(l.to))?.label ?? '';
+  return [...MAIN, ...ADMIN].find((l) => pathname.startsWith(l.to))?.label ?? '';
 }
 
 export default function AdminLayout() {
   const { isAdmin, lock } = useSession();
   const nav = useNavigate();
   const attentionCount = useLiveQuery(async () => (await computeAttention()).length, []);
+  const surveyCount = useLiveQuery(surveysToDo, []);
   const [ask, setAsk] = useState<Ask | null>(null);
   const { pathname } = useLocation();
   // Set by the Lock button, so locking goes to the welcome screen instead of the passphrase screen.
@@ -62,9 +62,14 @@ export default function AdminLayout() {
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
   }, [menuOpen]);
 
-  const link = (l: MenuLink) => (
-    <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
-  );
+  // Badges: Review = items needing attention; Members = surveys still to do.
+  const badge = (to: string) => (to === '/admin/review' ? attentionCount : to === '/admin/members' ? surveyCount : 0);
+  const link = (l: MenuLink) => {
+    const n = badge(l.to);
+    return (
+      <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{n ? <span className="badge warn" style={{ marginLeft: 6 }} aria-label={`${n} to do`}>{n}</span> : null}</NavLink>
+    );
+  };
 
   async function go(memberId: string, onlyNew = false) {
     setAsk(null);
@@ -94,7 +99,7 @@ export default function AdminLayout() {
         <div className="inner">
           <div className="menu" ref={menuRef}>
             <button className="ghost menu-button" aria-expanded={menuOpen} aria-controls="admin-menu" onClick={() => setMenuOpen((o) => !o)}>
-              <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{attentionCount ? <span className="badge warn">{attentionCount}</span> : null}
+              <span aria-hidden>{menuOpen ? '✕' : '☰'}</span> Menu{(attentionCount || surveyCount) ? <span className="notify-dot" role="img" aria-label="Something needs attention" /> : null}
             </button>
             {menuOpen && (
               <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>

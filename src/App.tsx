@@ -7,7 +7,6 @@ import Handoff from './screens/Handoff';
 import Setup from './screens/Setup';
 import Unlock from './screens/Unlock';
 import AdminLayout from './screens/admin/AdminLayout';
-import AdminHome from './screens/admin/AdminHome';
 import Members from './screens/admin/Members';
 import MemberDetail from './screens/admin/MemberDetail';
 import Review from './screens/admin/Review';
@@ -53,7 +52,7 @@ function Routed() {
       <Route path="/restore" element={<Restore />} />
       <Route path="/survey/:memberId" element={<Survey />} />
       <Route path="/admin" element={<AdminLayout />}>
-        <Route index element={<AdminHome />} />
+        <Route index element={<Navigate to="inventory" replace />} />
         <Route path="members" element={<Members />} />
         <Route path="members/:id" element={<MemberDetail />} />
         <Route path="review" element={<Review />} />

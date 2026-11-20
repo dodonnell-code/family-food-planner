@@ -118,7 +118,7 @@ function PlanningForm({ hh }: { hh: Household }) {
         <h2>Inventory</h2>
         <div className="grid">
           <label>Warn about food expiring within (days)<input type="number" min={1} max={365} value={s.expiryWarningDays} onChange={(e) => setS((x) => ({ ...x, expiryWarningDays: e.target.value }))} />
-            <span className="small muted" style={{ fontWeight: 400 }}>Shows on Home and Inventory so you can use it in everyday meals first.</span></label>
+            <span className="small muted" style={{ fontWeight: 400 }}>Shows on Inventory and Review so you can use it in everyday meals first.</span></label>
         </div>
       </section>
 

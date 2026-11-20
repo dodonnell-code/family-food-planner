@@ -29,3 +29,8 @@ export function surveyBadge(x: MemberWithSurvey): { text: string; tone: '' | 'ok
   if (x.latest.needsRefresh) return { text: 'Needs refresh', tone: 'warn' };
   return { text: 'Complete', tone: 'ok' };
 }
+
+/** Active members whose survey still needs doing (none yet, unfinished, or asked to refresh). Shown on Members in the menu. */
+export async function surveysToDo(): Promise<number> {
+  return (await loadMembersWithSurveys()).filter((r) => r.member.status === 'active' && surveyBadge(r).tone !== 'ok').length;
+}
