@@ -1,7 +1,7 @@
 import { audit, db as defaultDb, now, uid, type PlannerDB } from './db';
 import { buildSeedCatalog, CATALOG_VERSION, MERGED_INTO, RETIRED_SEED_IDS, SURVEY_SINCE } from './seedCatalog';
 import { isExcluded } from '../domain/safety';
-import { isSurveyed } from '../domain/surveyScope';
+import { inSurvey } from '../domain/surveyScope';
 import { pick, recordChange } from './changes';
 import type {
   Household,
@@ -309,7 +309,7 @@ export async function newSurveyQuestions(memberId: ID, database: PlannerDB = def
   if (!latest) return [];
   const [answers, foods, restrictions] = await Promise.all([
     database.answers.where('surveyId').equals(latest.id).toArray(),
-    database.foods.filter((f) => f.active && isSurveyed(f.category)).toArray(),
+    database.foods.filter(inSurvey).toArray(),
     database.restrictions.where('memberId').equals(memberId).filter((r) => r.active).toArray(),
   ]);
   const seen = new Set([...answers.map((a) => a.foodItemId), ...(latest.asked ?? [])]);
@@ -392,7 +392,7 @@ export async function submitSurvey(surveyId: ID, database: PlannerDB = defaultDb
     for (const o of others) if (o.status === 'submitted') await database.surveys.update(o.id, { status: 'superseded' });
     // Record what has been asked so later additions to the survey can be offered on their own.
     const restrictions = await database.restrictions.where('memberId').equals(s.memberId).filter((r) => r.active).toArray();
-    const asked = (await database.foods.filter((f) => f.active && isSurveyed(f.category)).toArray()).filter((f) => !isExcluded(f, restrictions)).map((f) => f.id);
+    const asked = (await database.foods.filter(inSurvey).toArray()).filter((f) => !isExcluded(f, restrictions)).map((f) => f.id);
     await database.surveys.update(surveyId, { status: 'submitted', completedAt: now(), updatedAt: now(), asked });
     await audit('survey.submit', { memberId: s.memberId, surveyId }, undefined, database);
     const onlyNew = s.onlyNew ? new Set(s.onlyNew) : undefined;

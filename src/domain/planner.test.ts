@@ -566,3 +566,16 @@ describe('planner: always stocked', () => {
     expect(allergic.items.some((i) => i.foodId === 'peanut-butter')).toBe(false);
   });
 });
+
+describe('catalog-only foods', () => {
+  it('aren’t picked by the planner, but go in when added by hand', () => {
+    const fam = [member('a', { ratings: all5(['canned-chili']) }), member('b', { ratings: all5(['canned-chili']) })];
+    const withIt = buildPlan(input(fam, 'long'));
+    expect(withIt.items.some((i) => i.foodId === 'canned-chili')).toBe(true);
+    const only = foods.map((f) => (f.id === 'canned-chili' ? { ...f, catalogOnly: true } : f));
+    const auto = buildPlan(input(fam, 'long', { foods: only }));
+    expect(auto.items.some((i) => i.foodId === 'canned-chili')).toBe(false);
+    const byHand = buildPlan(input(fam, 'long', { foods: only, include: ['canned-chili'] }));
+    expect(byHand.items.some((i) => i.foodId === 'canned-chili')).toBe(true);
+  });
+});

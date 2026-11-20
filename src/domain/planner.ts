@@ -429,7 +429,9 @@ export function buildNestedPlan(input: PlanInput, chain: { days: Record<Tier, nu
 export function buildPlan(input: PlanInput): PlanResult {
   const { tier, scenario, days, defaults, members } = input;
   const warnings: string[] = [];
-  const foods = input.foods.filter((f) => f.active).sort((a, b) => a.id.localeCompare(b.id));
+  // Catalog-only foods are left to the admin: in only when added by hand (or already in the smaller plan).
+  const byHand = new Set<ID>([...(input.include ?? []), ...Object.values(input.substitutions ?? {}).filter((x): x is ID => !!x), ...(input.base?.items ?? []).map((i) => i.foodId)]);
+  const foods = input.foods.filter((f) => f.active && (!f.catalogOnly || byHand.has(f.id))).sort((a, b) => a.id.localeCompare(b.id));
   const nameOf = (id: ID) => members.find((m) => m.id === id)?.name ?? 'Someone';
   const subs = input.substitutions ?? {};
   // Replacement food → the foods it replaces.

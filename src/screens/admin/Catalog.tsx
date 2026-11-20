@@ -64,6 +64,7 @@ export default function Catalog() {
               {f.allergens.contains.slice(0, 3).map((a) => <span key={a} className="badge danger">{subjectLabel(a)}</span>)}
               {f.allergens.contains.length > 3 && <span className="badge danger">+{f.allergens.contains.length - 3}</span>}
               {f.needsReview && <span className="badge warn">needs review</span>}
+              {f.catalogOnly && <span className="badge">catalog only</span>}
               {f.revision > 1 && <span className="badge">edited</span>}
             </div>
           </Link>

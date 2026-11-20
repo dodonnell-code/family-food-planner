@@ -53,6 +53,7 @@ export function blankFood(): FoodItem {
     packagingDurability: 2,
     mealRole: 'main',
     active: true,
+    catalogOnly: true,
     needsReview: false,
     revision: 1,
     updatedAt: now(),
