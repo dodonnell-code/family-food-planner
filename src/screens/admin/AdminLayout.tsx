@@ -24,6 +24,7 @@ interface Ask { memberId: string; name: string; count: number; groups: string[] 
 interface MenuLink { to: string; label: string; end?: boolean }
 const MAIN: MenuLink[] = [
   { to: '/admin/inventory', label: 'Inventory' },
+  { to: '/admin/on-hand', label: 'On hand' },
   { to: '/admin/plan', label: 'Plan' },
   { to: '/admin/deals', label: 'Deals' },
 ];

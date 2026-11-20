@@ -36,14 +36,37 @@ export async function setEquipmentHave(item: string, have: boolean, database: Pl
 
 export const listStock = (database: PlannerDB = defaultDb) => database.stock.toArray();
 
-/** Some was eaten (or drunk) in everyday meals: take it from the batches that expire soonest. */
-export async function consumeStock(entries: StockEntry[], qty: number, today: string, database: PlannerDB = defaultDb) {
+/**
+ * Some was eaten (or drunk) in everyday meals: take it from the batches that expire soonest.
+ * Returns the batches as they were, for undoStockChange.
+ */
+export async function consumeStock(entries: StockEntry[], qty: number, today: string, database: PlannerDB = defaultDb): Promise<StockEntry[]> {
   const changes = planUse(entries, qty, today);
+  const before = entries.filter((e) => changes.some((c) => c.id === e.id)).map((e) => ({ ...e }));
   await database.transaction('rw', [database.stock, database.audit], async () => {
     for (const c of changes) {
       if (c.quantity <= 0) await database.stock.delete(c.id);
       else await database.stock.update(c.id, { quantity: c.quantity, updatedAt: now() });
     }
     await audit('stock.use', { foodId: entries[0]?.foodId ?? '' }, `${entries[0]?.kind ?? 'food'} -${qty}`, database);
+  });
+  return before;
+}
+
+/** All of it is gone (used up or thrown out). Returns the batches as they were, for undoStockChange. */
+export async function clearStock(entries: StockEntry[], database: PlannerDB = defaultDb): Promise<StockEntry[]> {
+  const before = entries.map((e) => ({ ...e }));
+  await database.transaction('rw', [database.stock, database.audit], async () => {
+    await database.stock.bulkDelete(entries.map((e) => e.id));
+    await audit('stock.use', { foodId: entries[0]?.foodId ?? '' }, `${entries[0]?.kind ?? 'food'} all`, database);
+  });
+  return before;
+}
+
+/** Put batches back exactly as they were (Undo). */
+export async function undoStockChange(before: StockEntry[], database: PlannerDB = defaultDb) {
+  await database.transaction('rw', [database.stock, database.audit], async () => {
+    await database.stock.bulkPut(before);
+    await audit('stock.undo', { foodId: before[0]?.foodId ?? '' }, undefined, database);
   });
 }

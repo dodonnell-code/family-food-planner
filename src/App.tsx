@@ -20,6 +20,7 @@ import Inventory from './screens/admin/Inventory';
 import Deals from './screens/admin/Deals';
 import Restore from './screens/Restore';
 import LinkDevice from './screens/LinkDevice';
+import OnHand, { OnHandList } from './screens/OnHand';
 import { initSync } from './data/cloud';
 import { getDeviceOwner } from './data/device';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -47,6 +48,7 @@ function Routed() {
       <Route path="/" element={<Start />} />
       <Route path="/welcome" element={<Handoff />} />
       <Route path="/link" element={<LinkDevice />} />
+      <Route path="/on-hand" element={<OnHand />} />
       <Route path="/setup" element={<Setup />} />
       <Route path="/unlock" element={<Unlock />} />
       <Route path="/restore" element={<Restore />} />
@@ -60,6 +62,7 @@ function Routed() {
         <Route path="catalog/:id" element={<FoodEditor />} />
         <Route path="plan" element={<Plan />} />
         <Route path="inventory" element={<Inventory />} />
+        <Route path="on-hand" element={<div className="stack"><h1 style={{ margin: 0 }}>On hand</h1><OnHandList /></div>} />
         <Route path="deals" element={<Deals />} />
         <Route path="reports" element={<Reports />} />
         <Route path="backup" element={<Backup />} />

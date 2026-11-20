@@ -41,6 +41,8 @@ export default function Handoff() {
           <>
             <button className="primary big" onClick={() => nav('/unlock?next=start')}>Start a survey</button>
             <p className="small muted">An adult with the Admin passphrase chooses who goes next.</p>
+            <Link to="/on-hand" className="btn big">What we have</Link>
+            <p className="small muted" style={{ marginTop: -8 }}>Used something from the emergency supply? Mark it here.</p>
           </>
         )}
 
@@ -94,6 +96,7 @@ function PersonalWelcome({ owner, justFinished }: { owner: Member; justFinished:
             <button onClick={() => go()}>Change my answers (retake)</button>
           </>
         )}
+        <Link to="/on-hand" className="btn">What we have</Link>
         <Link to="/unlock" className="btn ghost">Admin</Link>
         <div><ThemeButton /></div>
       </div>
