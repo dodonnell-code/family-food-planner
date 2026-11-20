@@ -25,19 +25,19 @@ const MAIN: MenuLink[] = [
   { to: '/admin', label: 'Home', end: true },
   { to: '/admin/plan', label: 'Plan' },
   { to: '/admin/deals', label: 'Deals' },
+];
+/** Under the "Admin" heading in the menu. */
+const ADMIN: MenuLink[] = [
+  { to: '/admin/members', label: 'Members' },
+  { to: '/admin/review', label: 'Review' },
   { to: '/admin/reports', label: 'Reports' },
   { to: '/admin/catalog', label: 'Catalog' },
-  { to: '/admin/review', label: 'Review' },
-];
-/** Less-used pages, under a "More" heading in the menu. */
-const MORE: MenuLink[] = [
-  { to: '/admin/members', label: 'Members' },
   { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/backup', label: 'Backup & sync' },
 ];
 function currentLabel(pathname: string): string {
   if (pathname === '/admin' || pathname === '/admin/') return 'Home';
-  return [...MAIN, ...MORE].find((l) => l.to !== '/admin' && pathname.startsWith(l.to))?.label ?? '';
+  return [...MAIN, ...ADMIN].find((l) => l.to !== '/admin' && pathname.startsWith(l.to))?.label ?? '';
 }
 
 export default function AdminLayout() {
@@ -61,6 +61,10 @@ export default function AdminLayout() {
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
   }, [menuOpen]);
+
+  const link = (l: MenuLink) => (
+    <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>
+  );
 
   async function go(memberId: string, onlyNew = false) {
     setAsk(null);
@@ -94,9 +98,9 @@ export default function AdminLayout() {
             </button>
             {menuOpen && (
               <nav id="admin-menu" aria-label="Admin" className="menu-panel" onClick={closeOnLink}>
-                {MAIN.map((l) => <NavLink key={l.to} to={l.to} end={l.end}>{l.label}{l.to === '/admin/review' && attentionCount ? <span className="badge warn" style={{ marginLeft: 6 }}>{attentionCount}</span> : null}</NavLink>)}
-                <div className="menu-group" aria-hidden>More</div>
-                {MORE.map((l) => <NavLink key={l.to} to={l.to}>{l.label}</NavLink>)}
+                {MAIN.map(link)}
+                <div className="menu-group" aria-hidden>Admin</div>
+                {ADMIN.map(link)}
               </nav>
             )}
           </div>
