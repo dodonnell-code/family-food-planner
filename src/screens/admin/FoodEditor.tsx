@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { db } from '../../data/db';
-import { blankFood, saveFood, setFoodActive } from '../../data/adminRepo';
+import { blankFood, saveFood, setFoodActive, setPlanOverride } from '../../data/adminRepo';
+import { TIER_LABEL } from '../../data/planRepo';
 import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
 import { applyLookup, FoodLookup } from './FoodLookup';
-import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod } from '../../domain/types';
+import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod, Tier } from '../../domain/types';
+
+const TIERS: Tier[] = ['short', 'medium', 'long'];
+type PlanUse = 'none' | 'auto' | 'hand';
 
 const FORMS: FoodForm[] = ['canned', 'pouch', 'dry', 'freeze-dried', 'dehydrated', 'jar', 'box', 'bottle', 'packet', 'bulk'];
 const METHODS: { v: PrepMethod; l: string }[] = [
@@ -30,16 +34,24 @@ export default function FoodEditor() {
   const [params] = useSearchParams();
   const prefill = params.get('name') ?? '';
   const food = useLiveQuery(async () => (isNew ? { ...blankFood(), name: prefill } : ((await db.foods.get(id!)) ?? null)), [id, prefill]);
-  if (food === undefined) return <p className="muted">Loading…</p>;
+  // Plans this food was added to by hand.
+  const handTiers = useLiveQuery(async () => {
+    const o = (await db.households.toCollection().first())?.planOverrides ?? {};
+    return TIERS.filter((t) => !isNew && (o[t] ?? []).includes(id!));
+  }, [id, isNew]);
+  if (food === undefined || handTiers === undefined) return <p className="muted">Loading…</p>;
   if (!food) return <p>Food not found. <Link to="/admin/catalog">Back to catalog</Link></p>;
-  return <Editor key={food.id || 'new'} initial={food} isNew={isNew} />;
+  return <Editor key={food.id || 'new'} initial={food} isNew={isNew} handTiers={handTiers} />;
 }
 
 const num = (v: string): number | undefined => (v.trim() === '' ? undefined : Number(v));
 
-function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
+function Editor({ initial, isNew, handTiers }: { initial: FoodItem; isNew: boolean; handTiers: Tier[] }) {
   const nav = useNavigate();
   const [f, setF] = useState<FoodItem>(initial);
+  // Plans: catalog only, the planner decides, or added by hand to a plan (and the bigger ones).
+  const [planUse, setPlanUse] = useState<PlanUse>(!initial.catalogOnly ? 'auto' : handTiers.length ? 'hand' : 'none');
+  const [planTier, setPlanTier] = useState<Tier>(handTiers[0] ?? 'short');
   const [tags, setTags] = useState(initial.tags.join(', '));
   const [equip, setEquip] = useState((initial.equipment ?? []).join(', '));
   const [err, setErr] = useState('');
@@ -60,7 +72,12 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
     e.preventDefault();
     setErr('');
     try {
-      const out = await saveFood({ ...f, tags: tags.split(','), equipment: equip.split(',') });
+      const out = await saveFood({ ...f, catalogOnly: planUse === 'auto' ? undefined : true, tags: tags.split(','), equipment: equip.split(',') });
+      // Added by hand to the chosen plan only (the bigger plans build on it); taken out of the others.
+      for (const t of TIERS) {
+        const want = planUse === 'hand' && t === planTier;
+        if (want !== handTiers.includes(t)) await setPlanOverride(t, out.id, want);
+      }
       if (isNew) nav(`/admin/catalog/${out.id}`, { replace: true });
       setSaved('Saved. The change is listed in Review.');
       window.setTimeout(() => setSaved(''), 2500);
@@ -111,14 +128,6 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
             </select>
           </label>
         </div>
-        <label className="inline" style={{ alignItems: 'flex-start' }}>
-          <input type="checkbox" checked={!f.catalogOnly} onChange={(e) => set('catalogOnly', !e.target.checked || undefined)} />
-          <span><strong>Let the planner use it</strong>
-            <span className="small muted" style={{ display: 'block', fontWeight: 400 }}>{f.catalogOnly
-              ? 'Off: the planner won’t put it in plans. It’s still in the catalog, inventory and the survey (asked the next time someone takes it), and you can add it to a plan by hand on the Plan page.'
-              : 'On: the planner can pick it for plans.'}</span>
-          </span>
-        </label>
         <label>Examples (shown in the survey)<input value={f.examples ?? ''} onChange={(e) => set('examples', e.target.value || undefined)} placeholder="e.g. chunk white chicken" /></label>
         <label>Tags (comma-separated)
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. vegetarian, vegan, kid-friendly, pork, beef, rapid-carb, soft-texture" />
@@ -221,6 +230,30 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
         </div>
         <label>Safety notes<textarea value={f.safetyNotes ?? ''} onChange={(e) => set('safetyNotes', e.target.value || undefined)} /></label>
         <label className="inline"><input type="checkbox" checked={f.needsReview} onChange={(e) => set('needsReview', e.target.checked)} /> Needs review (details not yet checked)</label>
+      </section>
+
+      <section className="card stack">
+        <h2 style={{ margin: 0 }}>Plans</h2>
+        <p className="small muted" style={{ margin: 0 }}>Every food is in the catalog, inventory and the survey (asked the next time someone takes it). Choose whether it goes in plans.</p>
+        <div className="stack" role="radiogroup" aria-label="Plans" style={{ gap: 10 }}>
+          <label className="inline" style={{ alignItems: 'flex-start' }}>
+            <input type="radio" name="planUse" checked={planUse === 'none'} onChange={() => setPlanUse('none')} />
+            <span><strong>Not in plans</strong><span className="small muted" style={{ display: 'block', fontWeight: 400 }}>Just keep it in the catalog. You can add it later here or on the Plan page.</span></span>
+          </label>
+          <label className="inline" style={{ alignItems: 'flex-start' }}>
+            <input type="radio" name="planUse" checked={planUse === 'hand'} onChange={() => setPlanUse('hand')} />
+            <span><strong>Add it to a plan now</strong><span className="small muted" style={{ display: 'block', fontWeight: 400 }}>It goes in the plan you choose and the bigger ones (they build on each other). Change the amount on the Plan page.</span></span>
+          </label>
+          {planUse === 'hand' && (
+            <div className="row" style={{ gap: 6, paddingLeft: 28 }}>
+              {TIERS.map((t) => <button type="button" key={t} aria-pressed={planTier === t} className={planTier === t ? 'primary' : ''} onClick={() => setPlanTier(t)}>{TIER_LABEL[t]}</button>)}
+            </div>
+          )}
+          <label className="inline" style={{ alignItems: 'flex-start' }}>
+            <input type="radio" name="planUse" checked={planUse === 'auto'} onChange={() => setPlanUse('auto')} />
+            <span><strong>Let the planner decide</strong><span className="small muted" style={{ display: 'block', fontWeight: 400 }}>The planner puts it in plans when it fits the family’s ratings, safety and nutrition.</span></span>
+          </label>
+        </div>
       </section>
 
       {err && <div className="notice danger" role="alert">{err}</div>}
