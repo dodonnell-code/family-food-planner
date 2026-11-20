@@ -196,7 +196,8 @@ describe('new survey questions', () => {
     expect(fresh).toEqual(expect.arrayContaining(['ketchup', 'mustard', 'hot-sauce']));
     expect(fresh).not.toContain('white-rice');
     const { computeAttention } = await import('../domain/attention');
-    expect((await computeAttention(db)).find((i) => i.id === `newq:${m.id}`)?.title).toMatch(/new survey questions/);
+    // Not a reminder: they're offered the next time the survey is started.
+    expect((await computeAttention(db)).some((i) => i.id === `newq:${m.id}`)).toBe(false);
 
     const s2 = await startOrResumeSurvey(m.id, db, { onlyNew: true });
     expect(s2.onlyNew?.sort()).toEqual([...fresh].sort());

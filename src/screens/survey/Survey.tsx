@@ -68,7 +68,7 @@ export default function Survey() {
     const [member, survey] = await Promise.all([db.members.get(memberId!), inProgressSurvey(memberId!)]);
     if (!member || !survey) return { member: null, survey: null } as const;
     const [foods, restrictions, answers] = await Promise.all([
-      db.foods.filter((f) => f.active && !f.catalogOnly).toArray(),
+      db.foods.filter((f) => f.active).toArray(),
       db.restrictions.where('memberId').equals(member.id).filter((r) => r.active).toArray(),
       db.answers.where('surveyId').equals(survey.id).toArray(),
     ]);

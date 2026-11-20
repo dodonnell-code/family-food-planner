@@ -5,7 +5,6 @@ import { db as defaultDb, type PlannerDB } from '../data/db';
 import { needKind } from './needs';
 import { EXPIRING_SOON_DAYS, stockStatus } from './inventory';
 import type { Member } from './types';
-import { newSurveyQuestions } from '../data/repo';
 
 export type AttentionSeverity = 'high' | 'medium' | 'low';
 
@@ -63,11 +62,9 @@ export async function computeAttention(database: PlannerDB = defaultDb): Promise
     } else if (latest?.needsRefresh && !inProgress) {
       items.push({ id: `refresh:${m.id}`, severity: 'medium', memberId: m.id, action: 'start-survey', dismissRefresh: true, link: `/admin/members/${m.id}`,
         title: `${fname(m)}'s survey may be outdated`, detail: latest.refreshReason ?? 'Their restrictions or membership changed after they last took it. Consider a retake.' });
-    } else if (latest && !inProgress) {
-      const n = (await newSurveyQuestions(m.id, database)).length;
-      if (n) items.push({ id: `newq:${m.id}`, severity: 'low', memberId: m.id, action: 'start-survey', link: `/admin/members/${m.id}`,
-        title: `${fname(m)} has ${n} new survey question${n === 1 ? '' : 's'}`, detail: 'Foods were added to the survey since they took it. They can answer just the new ones.' });
     }
+    // Foods added to the survey since someone took it aren't a reminder: they're offered the
+    // next time their survey is started ("just the new questions" or a full retake).
   }
 
   for (const r of restrictions) {

@@ -10,5 +10,5 @@ export const SURVEYED_CATEGORIES: SurveyedCategory[] = [
 
 export const isSurveyed = (c: FoodCategory): c is SurveyedCategory => (SURVEYED_CATEGORIES as FoodCategory[]).includes(c);
 
-/** Foods the survey asks about: active, in a surveyed group, and not catalog-only. */
-export const inSurvey = (f: FoodItem) => f.active && !f.catalogOnly && isSurveyed(f.category);
+/** Foods the survey asks about: active and in a surveyed group (catalog-only foods too: their ratings are ready if they go in a plan). */
+export const inSurvey = (f: FoodItem) => f.active && isSurveyed(f.category);

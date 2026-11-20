@@ -297,8 +297,8 @@ export interface FoodItem {
   /** Kinds the survey asks about and the shopping list breaks down (generic foods like canned fruit). */
   kinds?: FoodKind[];
   /**
-   * In the catalog (and inventory) only: the planner doesn't pick it and surveys don't ask about
-   * it until it's turned on. It can still be added to a plan by hand. New foods start this way.
+   * Not for plans yet: the planner doesn't pick it until it's turned on (it can still be added to
+   * a plan by hand). Surveys still ask about it. New foods start this way.
    */
   catalogOnly?: boolean;
   /** Pantry items (baking & seasonings): catalog servings used per person per day, and the smallest plan that includes it. */

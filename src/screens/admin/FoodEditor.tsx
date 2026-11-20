@@ -113,10 +113,10 @@ function Editor({ initial, isNew }: { initial: FoodItem; isNew: boolean }) {
         </div>
         <label className="inline" style={{ alignItems: 'flex-start' }}>
           <input type="checkbox" checked={!f.catalogOnly} onChange={(e) => set('catalogOnly', !e.target.checked || undefined)} />
-          <span><strong>Use in plans and surveys</strong>
+          <span><strong>Let the planner use it</strong>
             <span className="small muted" style={{ display: 'block', fontWeight: 400 }}>{f.catalogOnly
-              ? 'Off: this food is in the catalog and inventory only. The planner won’t pick it and surveys won’t ask about it. You can still add it to a plan by hand on the Plan page.'
-              : 'On: the planner can pick it, and surveys ask about it (people who already took the survey get it as a new question).'}</span>
+              ? 'Off: the planner won’t put it in plans. It’s still in the catalog, inventory and the survey (asked the next time someone takes it), and you can add it to a plan by hand on the Plan page.'
+              : 'On: the planner can pick it for plans.'}</span>
           </span>
         </label>
         <label>Examples (shown in the survey)<input value={f.examples ?? ''} onChange={(e) => set('examples', e.target.value || undefined)} placeholder="e.g. chunk white chicken" /></label>
