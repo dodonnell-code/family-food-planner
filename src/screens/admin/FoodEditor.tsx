@@ -8,6 +8,7 @@ import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
 import { applyLookup, FoodLookup } from './FoodLookup';
+import { AddChoice, AddKind } from './AddKind';
 import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -31,17 +32,25 @@ const LABEL_SOURCE = 'Entered by admin (from the label)';
 export default function FoodEditor() {
   const { id } = useParams<{ id: string }>();
   const isNew = id === 'new';
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const prefill = params.get('name') ?? '';
+  const as = params.get('as');
+  const pick = (v: string | null) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set('as', v); else n.delete('as'); return n; });
   const food = useLiveQuery(async () => (isNew ? { ...blankFood(), name: prefill } : ((await db.foods.get(id!)) ?? null)), [id, prefill]);
   // Plans this food was added to by hand.
   const handTiers = useLiveQuery(async () => {
     const o = (await db.households.toCollection().first())?.planOverrides ?? {};
     return TIERS.filter((t) => !isNew && (o[t] ?? []).includes(id!));
   }, [id, isNew]);
+  if (isNew && as !== 'food') return as === 'kind' ? <AddKind prefill={prefill} onBack={() => pick(null)} /> : <AddChoice onPick={pick} />;
   if (food === undefined || handTiers === undefined) return <p className="muted">Loading…</p>;
   if (!food) return <p>Food not found. <Link to="/admin/catalog">Back to catalog</Link></p>;
-  return <Editor key={food.id || 'new'} initial={food} isNew={isNew} handTiers={handTiers} />;
+  return (
+    <>
+      {params.get('added') && <div className="notice ok" role="status" style={{ marginBottom: 12 }}>Added “{params.get('added')}” to {food.name}. It’s listed under Kinds below.</div>}
+      <Editor key={food.id || 'new'} initial={food} isNew={isNew} handTiers={handTiers} />
+    </>
+  );
 }
 
 const num = (v: string): number | undefined => (v.trim() === '' ? undefined : Number(v));
