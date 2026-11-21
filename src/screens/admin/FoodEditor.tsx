@@ -8,7 +8,7 @@ import { implicitEquipment } from '../../domain/equipment';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
 import { applyLookup, FoodLookup } from './FoodLookup';
-import { AddChoice, AddKind } from './AddKind';
+import { AddChoice, AddKind, AddType } from './AddKind';
 import type { Allergen, FoodCategory, FoodForm, FoodItem, FoodKind, PrepMethod, Tier } from '../../domain/types';
 
 const TIERS: Tier[] = ['short', 'medium', 'long'];
@@ -42,11 +42,12 @@ export default function FoodEditor() {
     const o = (await db.households.toCollection().first())?.planOverrides ?? {};
     return TIERS.filter((t) => !isNew && (o[t] ?? []).includes(id!));
   }, [id, isNew]);
-  if (isNew && as !== 'food') return as === 'kind' ? <AddKind prefill={prefill} onBack={() => pick(null)} /> : <AddChoice onPick={pick} />;
+  if (isNew && as !== 'food') return as === 'kind' ? <AddKind prefill={prefill} onBack={() => pick(null)} /> : as === 'type' ? <AddType prefill={prefill} onBack={() => pick(null)} /> : <AddChoice onPick={pick} />;
   if (food === undefined || handTiers === undefined) return <p className="muted">Loading…</p>;
   if (!food) return <p>Food not found. <Link to="/admin/catalog">Back to catalog</Link></p>;
   return (
     <>
+      {params.get('created') && <div className="notice ok" role="status" style={{ marginBottom: 12 }}>Created {food.name} with {food.kinds?.length ?? 0} kinds. Fill in the package and nutrition below when you have them (it’s listed under Needs review until then), and choose whether it goes in plans.</div>}
       {params.get('added') && <div className="notice ok" role="status" style={{ marginBottom: 12 }}>Added “{params.get('added')}” to {food.name}. It’s listed under Kinds below.</div>}
       <Editor key={food.id || 'new'} initial={food} isNew={isNew} handTiers={handTiers} />
     </>

@@ -1,13 +1,14 @@
-// Adding a kind (a new vegetable, soup flavor, bean…) to a food the catalog already has, instead
-// of creating a whole new food with its own package and nutrition.
+// Quick ways to grow the catalog: a kind (a new vegetable, soup flavor, bean…) under a food it
+// already has, or a new generic food type ("Canned gravy") with its kinds (brown, turkey…). The
+// survey asks about the type and lets each person pick the kinds they like.
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../data/db';
-import { saveFood } from '../../data/adminRepo';
+import { blankFood, saveFood } from '../../data/adminRepo';
 import { ALLERGENS } from '../../app/ui';
 import { CATEGORY_LABELS } from './Catalog';
-import type { Allergen, FoodCategory, FoodItem } from '../../domain/types';
+import type { Allergen, FoodCategory, FoodForm, FoodItem } from '../../domain/types';
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/s\b/g, '');
 
@@ -112,23 +113,131 @@ export function AddKind({ prefill, onBack }: { prefill: string; onBack: () => vo
   );
 }
 
-/** The first step of “+ Add food”: a kind of something we have, or a whole new food. */
-export function AddChoice({ onPick }: { onPick: (as: 'kind' | 'food') => void }) {
+const TYPE_FORMS: { v: FoodForm; l: string }[] = [
+  { v: 'canned', l: 'Can' }, { v: 'jar', l: 'Jar' }, { v: 'bottle', l: 'Bottle' }, { v: 'packet', l: 'Packet / mix' },
+  { v: 'pouch', l: 'Pouch' }, { v: 'box', l: 'Box' }, { v: 'dry', l: 'Dry goods' }, { v: 'freeze-dried', l: 'Freeze-dried' },
+];
+const ROLE_FOR: Record<FoodCategory, FoodItem['mealRole']> = {
+  protein: 'main', legume: 'side', grain: 'staple', fruit: 'side', vegetable: 'side', meal: 'main',
+  'fat-snack': 'snack', 'dairy-alt': 'drink', beverage: 'drink', condiment: 'staple', pantry: 'staple',
+};
+type KindRow = { name: string; icon: string; contains: Allergen[]; open: boolean };
+const blankRow = (): KindRow => ({ name: '', icon: '', contains: [], open: false });
+const HINTS = ['e.g. Brown gravy', 'e.g. Turkey gravy', 'e.g. Country (sausage) gravy'];
+
+/** A new generic food type with its kinds. Package and nutrition can be filled in afterwards. */
+export function AddType({ prefill, onBack }: { prefill: string; onBack: () => void }) {
+  const nav = useNavigate();
+  const [name, setName] = useState(prefill);
+  const [category, setCategory] = useState<FoodCategory>('condiment');
+  const [form, setForm] = useState<FoodForm>('canned');
+  const [rows, setRows] = useState<KindRow[]>([blankRow(), blankRow(), blankRow()]);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const setRow = (i: number, patch: Partial<KindRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr('');
+    const kinds = rows.filter((r) => r.name.trim());
+    if (!name.trim()) return setErr('Type the name of the food type, like “Canned gravy”.');
+    if (!kinds.length) return setErr('Add at least one kind, like “Brown gravy”.');
+    setBusy(true);
+    try {
+      const b = blankFood();
+      const out = await saveFood({
+        ...b, name: name.trim(), category, form, mealRole: ROLE_FOR[category],
+        examples: kinds.map((k) => k.name.trim()).join(', '),
+        // Package and nutrition are still blank: listed under Needs review until they're filled in.
+        needsReview: true,
+        kinds: kinds.map((k) => ({ id: '', name: k.name.trim(), icon: k.icon.trim() || undefined, contains: k.contains.length ? k.contains : undefined })),
+      });
+      nav(`/admin/catalog/${out.id}?created=1`, { replace: true });
+    } catch (x) {
+      setErr(x instanceof Error ? x.message : String(x));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={save}>
+      <div className="spread">
+        <h1 style={{ margin: 0 }}>New food type</h1>
+        <button type="button" className="ghost" onClick={onBack}>Back</button>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        A general food with kinds under it. The survey asks about “{name.trim() || 'Canned gravy'}” and lets each person pick the kinds they like.
+        Inventory and the shopping list use the kinds too.
+      </p>
+      <section className="card stack">
+        <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Canned gravy" required autoFocus /></label>
+        <div className="grid">
+          <label>Food group
+            <select value={category} onChange={(e) => setCategory(e.target.value as FoodCategory)}>
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+          <label>Comes in
+            <select value={form} onChange={(e) => setForm(e.target.value as FoodForm)}>
+              {TYPE_FORMS.map((f) => <option key={f.v} value={f.v}>{f.l}</option>)}
+            </select>
+          </label>
+        </div>
+        {category === 'pantry' && <p className="small muted" style={{ margin: 0 }}>Baking &amp; seasonings aren’t in the survey. Pick another group if you want people asked about it.</p>}
+      </section>
+      <section className="card stack">
+        <h2 style={{ margin: 0 }}>Kinds</h2>
+        {rows.map((r, i) => (
+          <div key={i} className="stack" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
+              <input aria-label={`Kind ${i + 1} icon`} value={r.icon} onChange={(e) => setRow(i, { icon: e.target.value })} placeholder="🙂" style={{ width: 52, textAlign: 'center', fontSize: '1.2rem', flex: 'none' }} />
+              <input aria-label={`Kind ${i + 1} name`} value={r.name} onChange={(e) => setRow(i, { name: e.target.value })} placeholder={HINTS[i] ?? 'Another kind'} style={{ flex: 1, minWidth: 0 }} />
+            </div>
+            <button type="button" className="ghost small" style={{ alignSelf: 'flex-start', marginLeft: 52, minHeight: 32, padding: '0 8px' }} onClick={() => setRow(i, { open: !r.open })} aria-expanded={r.open}>
+              {r.open ? '▾' : '▸'} Allergens{r.contains.length ? `: ${r.contains.map((c) => ALLERGENS.find((a) => a.code === c)?.label ?? c).join(', ')}` : ''}
+            </button>
+            {r.open && (
+              <div className="row small" style={{ gap: 8, paddingLeft: 4 }}>
+                {ALLERGENS.map((a) => (
+                  <label key={a.code} className="inline">
+                    <input type="checkbox" checked={r.contains.includes(a.code)} onChange={() => setRow(i, { contains: r.contains.includes(a.code) ? r.contains.filter((x) => x !== a.code) : [...r.contains, a.code] })} /> {a.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        <div><button type="button" className="small" onClick={() => setRows((r) => [...r, blankRow()])}>Add another kind</button></div>
+      </section>
+      <p className="small muted" style={{ margin: 0 }}>Next you can fill in the package, nutrition and whether it goes in plans, or leave that for later.</p>
+      {err && <div className="notice danger" role="alert">{err}</div>}
+      <div className="row"><button className="primary big" disabled={busy}>Create food type</button></div>
+    </form>
+  );
+}
+
+export type AddAs = 'type' | 'kind' | 'food';
+
+/** The first step of “+ Add food”. */
+export function AddChoice({ onPick }: { onPick: (as: AddAs) => void }) {
   const big = { textAlign: 'left' as const, padding: 16, minHeight: 0, display: 'block', width: '100%' };
+  const choices: { as: AddAs; title: string; text: string }[] = [
+    { as: 'kind', title: 'A kind of something we already have', text: 'Like zucchini under Canned vegetables, or a new soup under Canned soups. Just a name; it shares that food’s package and nutrition.' },
+    { as: 'type', title: 'A new food type with kinds', text: 'Like Canned gravy, with brown, turkey and chicken gravy under it. The survey asks about gravy and lets people pick the kinds they like.' },
+    { as: 'food', title: 'A single new food', text: 'One specific thing with its own package, nutrition and storage (you can look it up by name or barcode).' },
+  ];
   return (
     <div className="stack">
       <div className="spread">
         <h1 style={{ margin: 0 }}>What are you adding?</h1>
         <Link to="/admin/catalog" className="btn ghost">Back</Link>
       </div>
-      <button type="button" className="card" style={big} onClick={() => onPick('kind')}>
-        <strong style={{ fontSize: '1.1rem' }}>A kind of something we already have</strong>
-        <span className="small muted" style={{ display: 'block', marginTop: 4 }}>Like zucchini under Canned vegetables, or a new soup under Canned soups. Just a name; it shares that food’s package and nutrition.</span>
-      </button>
-      <button type="button" className="card" style={big} onClick={() => onPick('food')}>
-        <strong style={{ fontSize: '1.1rem' }}>A new food</strong>
-        <span className="small muted" style={{ display: 'block', marginTop: 4 }}>Something different, with its own package, nutrition and storage (you can look it up by name or barcode).</span>
-      </button>
+      {choices.map((c) => (
+        <button key={c.as} type="button" className="card" style={big} onClick={() => onPick(c.as)}>
+          <strong style={{ fontSize: '1.1rem' }}>{c.title}</strong>
+          <span className="small muted" style={{ display: 'block', marginTop: 4 }}>{c.text}</span>
+        </button>
+      ))}
     </div>
   );
 }
